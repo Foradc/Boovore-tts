@@ -170,7 +170,7 @@ _generation_waiters: int = 0  # requests waiting for or holding the generation l
 # Guard against inputs that would overflow the static KV cache (max_seq_len=2048).
 # At ~3-4 chars/token for English the overhead of system/ref tokens leaves room
 # for roughly 1000 chars before we approach the limit.
-MAX_TEXT_CHARS = 1000
+MAX_TEXT_CHARS = 5000
 # ~10 MB covers 1 minute of 44.1 kHz stereo 16-bit WAV.
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 _AUDIO_TOO_LARGE_MSG = (
@@ -399,7 +399,7 @@ async def generate_stream(
                     temperature=temperature,
                     top_k=top_k,
                     repetition_penalty=repetition_penalty,
-                    max_new_tokens=360,  # cap at 30s (12 Hz codec)
+                    max_new_tokens=1800,  # cap at 150s (12 Hz codec)
                 )
             elif mode == "custom":
                 if not speaker:
@@ -601,7 +601,7 @@ async def generate_non_streaming(
                 temperature=temperature,
                 top_k=top_k,
                 repetition_penalty=repetition_penalty,
-                max_new_tokens=360,  # cap at 30s (12 Hz codec)
+                max_new_tokens=1800,  # cap at 150s (12 Hz codec)
             )
         elif mode == "custom":
             if not speaker:
