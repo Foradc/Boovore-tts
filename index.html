@@ -629,6 +629,86 @@ body {
 @keyframes blink   { 0%,100%{opacity:1} 50%{opacity:0.2} }
 @keyframes sweep   { 0%{transform:translateX(-200%)} 100%{transform:translateX(500%)} }
 @keyframes wavebar { 0%,100%{transform:scaleY(0.3)} 50%{transform:scaleY(1)} }
+
+/* ── Tabs ── */
+.tab-bar {
+  display: flex; gap: 2px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border); padding-bottom: 4px;
+}
+.tab {
+  padding: 4px 14px; font-size: 12px; font-weight: 500;
+  background: transparent; border: none; border-radius: var(--radius-sm);
+  color: var(--dim); cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.tab:hover { color: var(--text); background: var(--surface); }
+.tab.active { color: var(--accent); background: var(--accent-bg); }
+
+/* ── Estimation ── */
+.est-bar {
+  font-size: 11px; color: var(--dimmer); padding: 2px 4px; min-height: 16px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ── Audiobook ── */
+.book-panel { display: flex; flex-direction: column; gap: 8px; }
+.book-textarea {
+  width: 100%; height: 120px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font-size: 14px;
+  font-family: inherit; padding: 10px 12px; resize: none; outline: none;
+  transition: border-color 0.15s;
+}
+.book-textarea:focus { border-color: var(--accent-ring); }
+.book-textarea::placeholder { color: var(--dimmer); }
+.book-row { display: flex; gap: 6px; align-items: center; }
+.upload-btn {
+  padding: 6px 12px; font-size: 12px; font-weight: 500;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text2); cursor: pointer;
+  transition: all 0.15s; flex-shrink: 0; position: relative; overflow: hidden;
+  font-family: inherit;
+}
+.upload-btn:hover { border-color: var(--accent); color: var(--accent); }
+.upload-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.parse-btn {
+  padding: 6px 14px; font-size: 12px; font-weight: 600;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: var(--radius-sm); cursor: pointer; font-family: inherit;
+  transition: background 0.15s; flex-shrink: 0;
+}
+.parse-btn:hover:not(:disabled) { background: var(--accent2); }
+.parse-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.book-hint { font-size: 11px; color: var(--dimmer); margin-left: auto; }
+.chapter-list {
+  display: flex; flex-direction: column; gap: 3px;
+  max-height: 260px; overflow-y: auto;
+}
+.chapter-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 12px;
+}
+.chapter-item input[type="checkbox"] { flex-shrink: 0; accent-color: var(--accent); }
+.chapter-item .ch-title {
+  flex: 1; font-weight: 500; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chapter-item .ch-chars { font-size: 10px; color: var(--dimmer); flex-shrink: 0; font-family: monospace; }
+.chapter-item .ch-status { font-size: 10px; color: var(--dim); flex-shrink: 0; min-width: 50px; text-align: right; font-family: monospace; }
+.chapter-item.ch-done { border-color: rgba(34,197,94,0.3); }
+.chapter-item.ch-done .ch-status { color: var(--green); }
+.chapter-item.ch-active { border-color: var(--accent); box-shadow: 0 0 6px rgba(139,92,246,0.3); }
+.chapter-item.ch-error { border-color: rgba(239,68,68,0.3); }
+.chapter-item.ch-error .ch-status { color: var(--red); }
+.ch-dl {
+  padding: 1px 7px; font-size: 11px; background: var(--surface2);
+  border: 1px solid var(--border2); border-radius: 3px; cursor: pointer;
+  color: var(--text2); flex-shrink: 0;
+}
+.ch-dl:hover { border-color: var(--accent); color: var(--accent); }
+.book-gen-row { display: flex; gap: 6px; align-items: center; }
+.book-stats { font-size: 11px; color: var(--dim); margin-left: auto; font-family: monospace; }
+.book-voice-note { font-size: 11px; color: var(--dimmer); }
 </style>
 </head>
 <body>
@@ -651,10 +731,18 @@ body {
     </button>
   </header>
 
-  <!-- Main content -->
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab active" data-tab="tts" onclick="switchTab('tts')">TTS</button>
+    <button class="tab" data-tab="book" onclick="switchTab('book')">Audiobook</button>
+  </div>
+
+  <!-- TTS panel -->
+  <div id="panelTTS">
   <div class="main">
     <div class="text-wrap">
-      <textarea id="textIn" placeholder="Enter text to synthesize...">Against the odds, the wild lobster has found a new vessel for its voice. And with it, the possibility to realise its full potential.</textarea>
+      <textarea id="textIn" placeholder="Enter text to synthesize..." oninput="updateEstimation()">Against the odds, the wild lobster has found a new vessel for its voice. And with it, the possibility to realise its full potential.</textarea>
+      <div class="est-bar" id="estBar"></div>
     </div>
 
     <!-- Clone -->
@@ -754,6 +842,33 @@ body {
     </div>
 
   </div>
+  </div><!-- /#panelTTS -->
+
+  <!-- Audiobook panel -->
+  <div id="panelBook" style="display:none">
+  <div class="book-panel">
+    <div class="book-row">
+      <textarea id="bookText" class="book-textarea" placeholder="Colle ton texte ici (plain text)..."></textarea>
+    </div>
+    <div class="book-row">
+      <label class="upload-btn">
+        Charger .txt
+        <input type="file" accept=".txt" onchange="loadBookFile(this)">
+      </label>
+      <button class="parse-btn" onclick="parseBook()">Détecter les chapitres</button>
+      <span id="bookInfo" class="book-hint"></span>
+    </div>
+    <div id="chapterList" class="chapter-list" style="display:none"></div>
+    <div class="book-gen-row" id="bookGenRow" style="display:none">
+      <button class="parse-btn" id="bookGenBtn" onclick="generateBook()">Générer la sélection</button>
+      <button class="upload-btn" id="bookCancelBtn" onclick="cancelBook()" style="display:none">Annuler</button>
+      <button class="upload-btn" id="bookDlAllBtn" onclick="downloadAllChapters()" style="display:none">Tout télécharger</button>
+      <span class="book-stats" id="bookStats"></span>
+    </div>
+    <div class="pbar-wrap" id="bookPbarWrap" style="display:none"><div class="pbar" id="bookPbar"></div></div>
+    <div class="book-voice-note">Voix : utilise le clip de référence défini dans l'onglet TTS.</div>
+  </div>
+  </div><!-- /#panelBook -->
 
 </div><!-- /.app -->
 
@@ -870,6 +985,10 @@ let presetRefs = [];
 let loadedModel  = null;
 let loadingModel = null;
 let dlBlob   = null;
+let lastRtf  = 4.0;
+let bookBusy = false;
+let bookChapters = [];
+let bookCancelled = false;
 
 const defaultSpeakers = [
   { id: 'Vivian',   desc: 'Chinese — Bright young female' },
@@ -899,6 +1018,7 @@ const REC_SR = 24000;
 window.addEventListener('load', async () => {
   initTheme();
   autoGrow($('voiceInstr'));
+  updateEstimation();
   await fetchStatus();
   if (!loadedModel && availableModels.length > 0) {
     // Prefer CustomVoice as default (richer demo), fall back to first available
@@ -1700,7 +1820,7 @@ function resetMetrics() {
 }
 function pushMetrics(ttfa, rtf, dur, cloneMs) {
   if (ttfa    != null) $('mTTFA').textContent  = Math.round(ttfa) + 'ms';
-  if (rtf     != null) $('mRTF').textContent   = rtf.toFixed(2) + 'x';
+  if (rtf     != null) { $('mRTF').textContent = rtf.toFixed(2) + 'x'; if (rtf > 0) lastRtf = rtf; }
   if (dur     != null) $('mDur').textContent   = dur.toFixed(1) + 's';
   if (cloneMs != null) {
     $('mClone').textContent = Math.round(cloneMs) + 'ms';
@@ -1761,6 +1881,302 @@ function dlAudio() {
   a.download = 'generated_speech.wav';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  $('panelTTS').style.display  = tab === 'tts'  ? '' : 'none';
+  $('panelBook').style.display = tab === 'book' ? '' : 'none';
+}
+
+// ── Estimation ────────────────────────────────────────────────────────────────
+function updateEstimation() {
+  const chars = ($('textIn').value || '').length;
+  const el = $('estBar');
+  if (!chars) { el.textContent = ''; return; }
+  const audioSecs = chars / 14;
+  const genSecs   = audioSecs / lastRtf;
+  el.textContent = `~${audioSecs.toFixed(0)}s audio  ·  ~${genSecs.toFixed(0)}s de génération`;
+}
+
+// ── Audiobook ─────────────────────────────────────────────────────────────────
+const NON_CONTENT_TITLES = new Set([
+  'acknowledgements','acknowledgments','remerciements','preface','préface',
+  'foreword','avant-propos','dedication','dédicace','about the author',
+  'à propos de l\'auteur','index','bibliography','bibliographie','notes',
+  'appendix','annexe','table of contents','table des matières','contents',
+  'sommaire','references','références','also by','copyright','credits',
+  'permissions','colophon',
+]);
+
+function isNonContent(title) {
+  const t = title.toLowerCase().trim();
+  return NON_CONTENT_TITLES.has(t) ||
+    t.startsWith('acknowledg') || t.startsWith('appendix') || t.startsWith('annexe') ||
+    t.startsWith('about the') || t.startsWith('à propos');
+}
+
+function isChapterHeading(line) {
+  const t = line.trim();
+  if (!t || t.length > 80) return false;
+  if (/^(chapter|chapitre|kapitel|capítulo|capitolo)\s+/i.test(t)) return true;
+  if (/^(part|partie|teil|parte)\s+/i.test(t)) return true;
+  if (/^[IVXLCDMivxlcdm]+\.?\s*$/.test(t) && t.length < 8) return true;
+  if (/^\d{1,2}\.?\s*$/.test(t)) return true;
+  if (t.length >= 4 && t.length <= 60 && t === t.toUpperCase() &&
+      /[A-Z]{3,}/.test(t) && !/^\d/.test(t)) return true;
+  return false;
+}
+
+function loadBookFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { $('bookText').value = e.target.result; parseBook(); };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function parseBook() {
+  const raw = $('bookText').value.trim();
+  if (!raw) { $('bookInfo').textContent = 'Colle du texte d\'abord.'; return; }
+
+  const lines = raw.split('\n');
+  const sections = [];
+  let current = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    const prevEmpty = i === 0 || lines[i-1].trim() === '';
+    const nextEmpty = i >= lines.length - 1 || lines[i+1].trim() === '';
+
+    if (trimmed && isChapterHeading(trimmed) && (prevEmpty || nextEmpty)) {
+      if (current && current.lines.join('\n').trim().length > 50)
+        sections.push(current);
+      current = { title: trimmed, lines: [] };
+    } else if (current) {
+      current.lines.push(lines[i]);
+    } else {
+      current = { title: 'Début', lines: [lines[i]] };
+    }
+  }
+  if (current && current.lines.join('\n').trim().length > 50) sections.push(current);
+  if (!sections.length) sections.push({ title: 'Texte complet', lines: raw.split('\n') });
+
+  bookChapters = sections.map((s, i) => ({
+    index: i, title: s.title,
+    text: s.lines.join('\n').trim(),
+    isContent: !isNonContent(s.title),
+    status: 'pending', blob: null,
+  }));
+
+  renderChapterList();
+  $('bookInfo').textContent = `${bookChapters.length} sections trouvées`;
+}
+
+function renderChapterList() {
+  const list = $('chapterList');
+  list.innerHTML = '';
+  list.style.display = bookChapters.length ? '' : 'none';
+
+  bookChapters.forEach((ch, i) => {
+    const words = ch.text.split(/\s+/).filter(Boolean).length;
+    const estAudio = Math.round(ch.text.length / 14);
+    const statusText = ch.status === 'done' ? '✓ ok' :
+                       ch.status === 'error' ? '✗ erreur' :
+                       ch.status === 'generating' ? '⟳...' : '';
+
+    const item = document.createElement('div');
+    item.id = `ch-${i}`;
+    item.className = 'chapter-item' +
+      (ch.status === 'done' ? ' ch-done' : ch.status === 'error' ? ' ch-error' :
+       ch.status === 'generating' ? ' ch-active' : '');
+    item.innerHTML = `
+      <input type="checkbox" ${ch.isContent ? 'checked' : ''} onchange="toggleChapter(${i},this.checked)">
+      <span class="ch-title" title="${ch.title.replace(/"/g,'&quot;')}">${ch.title}</span>
+      <span class="ch-chars">${words}m · ~${estAudio}s</span>
+      <span class="ch-status" id="ch-status-${i}">${statusText}</span>
+      ${ch.blob ? `<button class="ch-dl" onclick="dlChapter(${i})">↓</button>` : ''}
+    `;
+    list.appendChild(item);
+  });
+
+  $('bookGenRow').style.display = bookChapters.length ? '' : 'none';
+  const done = bookChapters.filter(c => c.status === 'done');
+  $('bookDlAllBtn').style.display = done.length > 0 ? '' : 'none';
+  updateBookStats();
+}
+
+function toggleChapter(index, checked) {
+  bookChapters[index].isContent = checked;
+  updateBookStats();
+}
+
+function updateBookStats() {
+  const sel = bookChapters.filter(c => c.isContent);
+  const chars = sel.reduce((s, c) => s + c.text.length, 0);
+  const estAudio = Math.round(chars / 14);
+  const estGen   = Math.round(estAudio / lastRtf);
+  $('bookStats').textContent = `${sel.length} chapitres · ~${estAudio}s audio · ~${estGen}s génération`;
+}
+
+function splitIntoChunks(text, maxChars = 4000) {
+  if (text.length <= maxChars) return [text];
+  const paragraphs = text.split(/\n\n+/);
+  const chunks = []; let current = '';
+  for (const para of paragraphs) {
+    if (current.length + para.length + 2 <= maxChars) {
+      current += (current ? '\n\n' : '') + para;
+    } else if (para.length > maxChars) {
+      if (current) { chunks.push(current); current = ''; }
+      const sents = para.match(/[^.!?]+[.!?]+\s*/g) || [para];
+      for (const s of sents) {
+        if (current.length + s.length <= maxChars) current += s;
+        else { if (current) chunks.push(current.trim()); current = s; }
+      }
+    } else {
+      if (current) chunks.push(current);
+      current = para;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.filter(c => c.trim());
+}
+
+async function generateBook() {
+  if (busy || bookBusy) { showMsg('err', 'Une génération est déjà en cours.'); return; }
+  if (!loadedModel) { showMsg('err', 'Charge un modèle d\'abord (onglet TTS).'); return; }
+
+  const toGen = bookChapters.filter(c => c.isContent && c.status !== 'done');
+  if (!toGen.length) return;
+
+  bookBusy = true; bookCancelled = false;
+  $('bookGenBtn').disabled = true; $('bookGenBtn').textContent = 'Génération...';
+  $('bookCancelBtn').style.display = '';
+  $('bookPbarWrap').style.display = 'block';
+  $('bookPbar').style.width = '0%';
+
+  let done = 0;
+  for (const ch of toGen) {
+    if (bookCancelled) break;
+    ch.status = 'generating'; updateChapterUI(ch.index);
+    try {
+      const chunks = splitIntoChunks(ch.text, 4000);
+      const parts = [];
+      for (const chunk of chunks) {
+        if (bookCancelled) break;
+        const blob = await generateChunk(chunk);
+        if (blob) parts.push(blob);
+      }
+      if (parts.length && !bookCancelled) {
+        ch.blob   = parts.length === 1 ? parts[0] : await concatWavBlobs(parts);
+        ch.status = 'done';
+      } else if (!bookCancelled) {
+        ch.status = 'error';
+      }
+    } catch { ch.status = 'error'; }
+    done++;
+    $('bookPbar').style.width = Math.round(done / toGen.length * 100) + '%';
+    updateChapterUI(ch.index);
+  }
+
+  bookBusy = false;
+  $('bookGenBtn').disabled = false; $('bookGenBtn').textContent = 'Générer la sélection';
+  $('bookCancelBtn').style.display = 'none';
+  const doneCount = bookChapters.filter(c => c.status === 'done').length;
+  $('bookDlAllBtn').style.display = doneCount ? '' : 'none';
+  renderChapterList();
+}
+
+function cancelBook() {
+  bookCancelled = true;
+  $('bookCancelBtn').style.display = 'none';
+}
+
+async function generateChunk(text) {
+  const isVD = loadedModel?.includes('VoiceDesign');
+  const isCV = loadedModel?.includes('CustomVoice');
+  const mode = isVD ? 'voice_design' : isCV ? 'custom' : 'voice_clone';
+
+  const fd = new FormData();
+  fd.append('text',               text);
+  fd.append('mode',               mode);
+  fd.append('language',           $('langSel').value);
+  fd.append('temperature',        $('tempSl').value);
+  fd.append('top_k',              $('topkSl').value);
+  fd.append('repetition_penalty', $('repSl').value);
+
+  if (mode === 'voice_clone') {
+    if (presetRefId) fd.append('ref_preset', presetRefId);
+    else if (refFile) fd.append('ref_audio', refFile);
+    fd.append('xvec_only', xvecOnly ? 'true' : 'false');
+    if (!xvecOnly) fd.append('ref_text', $('refTextIn').value);
+  } else if (mode === 'custom') {
+    fd.append('speaker',  $('speakerId').value);
+    fd.append('instruct', $('customInstr').value);
+  } else {
+    fd.append('instruct', $('voiceInstr').value);
+  }
+
+  const res = await fetch('/generate', { method: 'POST', body: fd });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Failed'); }
+  const d = await res.json();
+  if (d.metrics?.rtf > 0) lastRtf = d.metrics.rtf;
+  const bytes = Uint8Array.from(atob(d.audio_b64), c => c.charCodeAt(0));
+  return new Blob([bytes], { type: 'audio/wav' });
+}
+
+async function concatWavBlobs(blobs) {
+  const parts = []; let sr = 24000;
+  for (const blob of blobs) {
+    const ab = await blob.arrayBuffer();
+    const p = parseWav(new Uint8Array(ab));
+    if (p) { parts.push(p.rawPcm); sr = p.sr; }
+  }
+  const totalLen = parts.reduce((s, p) => s + p.length, 0);
+  const outAb = new ArrayBuffer(44 + totalLen);
+  const v = new DataView(outAb);
+  const ws = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  ws(0,'RIFF'); v.setUint32(4, 36 + totalLen, true);
+  ws(8,'WAVE'); ws(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true);  v.setUint16(34,16,true);
+  ws(36,'data'); v.setUint32(40, totalLen, true);
+  const out = new Uint8Array(outAb, 44);
+  let offset = 0;
+  for (const p of parts) { out.set(p, offset); offset += p.length; }
+  return new Blob([outAb], { type: 'audio/wav' });
+}
+
+function updateChapterUI(index) {
+  const ch = bookChapters[index];
+  const item = $(`ch-${index}`);
+  if (!item) return;
+  item.className = 'chapter-item' +
+    (ch.status === 'done' ? ' ch-done' : ch.status === 'error' ? ' ch-error' :
+     ch.status === 'generating' ? ' ch-active' : '');
+  const statusEl = $(`ch-status-${index}`);
+  if (statusEl) statusEl.textContent =
+    ch.status === 'done' ? '✓ ok' : ch.status === 'error' ? '✗ erreur' :
+    ch.status === 'generating' ? '⟳...' : '';
+}
+
+function dlChapter(index) {
+  const ch = bookChapters[index];
+  if (!ch.blob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(ch.blob);
+  a.download = `${String(index + 1).padStart(2,'0')}_${ch.title.replace(/[^a-z0-9]/gi,'_').slice(0,40)}.wav`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+async function downloadAllChapters() {
+  const done = bookChapters.filter(c => c.status === 'done' && c.blob);
+  for (let i = 0; i < done.length; i++) {
+    dlChapter(done[i].index);
+    if (i < done.length - 1) await new Promise(r => setTimeout(r, 300));
+  }
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
