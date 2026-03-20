@@ -708,9 +708,24 @@ body {
   color: var(--text2); flex-shrink: 0;
 }
 .ch-dl:hover { border-color: var(--accent); color: var(--accent); }
-.book-gen-row { display: flex; gap: 6px; align-items: center; }
-.book-stats { font-size: 11px; color: var(--dim); margin-left: auto; font-family: monospace; }
+.book-gen-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.book-stats { font-size: 11px; color: var(--dim); font-family: monospace; }
 .book-voice-note { font-size: 11px; color: var(--dimmer); }
+.book-progress-row { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-top: 2px; }
+.book-pct { font-weight: 700; font-family: monospace; min-width: 36px; color: var(--accent); flex-shrink: 0; }
+.book-eta { color: var(--dim); margin-left: auto; font-family: monospace; font-size: 11px; }
+.book-speed-info { color: var(--dim); font-family: monospace; font-size: 11px; flex-shrink: 0; }
+.chapter-item .ch-retry {
+  font-size: 10px; color: var(--amber); cursor: pointer; flex-shrink: 0;
+  padding: 1px 6px; border: 1px solid rgba(234,179,8,0.3); border-radius: 3px;
+  background: none; font-family: inherit;
+}
+.chapter-item .ch-retry:hover { background: rgba(234,179,8,0.1); }
+.auto-dl-label {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--dim); cursor: pointer; flex-shrink: 0;
+}
+.auto-dl-label input { accent-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -863,11 +878,21 @@ body {
     <div id="chapterList" class="chapter-list" style="display:none"></div>
     <div class="book-gen-row" id="bookGenRow" style="display:none">
       <button class="parse-btn" id="bookGenBtn" onclick="generateBook()">Générer la sélection</button>
-      <button class="upload-btn" id="bookCancelBtn" onclick="cancelBook()" style="display:none">Annuler</button>
-      <button class="upload-btn" id="bookDlAllBtn" onclick="downloadAllChapters()" style="display:none">Tout télécharger</button>
+      <button class="upload-btn" id="bookCancelBtn" onclick="cancelBook()" style="display:none">Pause</button>
+      <button class="upload-btn" id="bookResumeBtn" onclick="generateBook()" style="display:none">Reprendre</button>
+      <label class="auto-dl-label" title="Télécharger chaque chapitre automatiquement"><input type="checkbox" id="autoDlCheck">Auto-DL</label>
       <span class="book-stats" id="bookStats"></span>
     </div>
-    <div class="pbar-wrap" id="bookPbarWrap" style="display:none"><div class="pbar" id="bookPbar"></div></div>
+    <div class="book-progress-row" id="bookProgressRow" style="display:none">
+      <div class="pbar-wrap" style="flex:1;display:block;margin:0"><div class="pbar" id="bookPbar"></div></div>
+      <span class="book-pct" id="bookPct">0%</span>
+      <span class="book-speed-info" id="bookSpeed"></span>
+      <span class="book-eta" id="bookEta"></span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap" id="bookDlRow">
+      <button class="upload-btn" id="bookDlAllBtn" onclick="downloadAllChapters()" style="display:none">Tout télécharger</button>
+      <button class="upload-btn" id="bookMergeBtn" onclick="mergeAllChapters()" style="display:none">Fusionner en 1 WAV</button>
+    </div>
     <div class="book-voice-note">Voix : utilise le clip de référence défini dans l'onglet TTS.</div>
   </div>
   </div><!-- /#panelBook -->
@@ -995,6 +1020,8 @@ let lastRtf  = 3.5; // 1.7B-Base ≈ 3.5× RTF, updated after first generation
 let bookBusy = false;
 let bookChapters = [];
 let bookCancelled = false;
+let bookStartTime = 0;
+let bookChaptersDone = 0;
 
 const defaultSpeakers = [
   { id: 'Vivian',   desc: 'Chinese — Bright young female' },
@@ -1934,6 +1961,13 @@ function isNonContent(title) {
     t.startsWith('about the') || t.startsWith('à propos');
 }
 
+function formatChapterTitle(title) {
+  const t = title.trim();
+  if (/^\d{1,3}\.?\s*$/.test(t)) return 'Chapitre ' + t.replace('.', '');
+  if (/^[IVXLCDMivxlcdm]+\.?\s*$/.test(t) && t.length < 8) return 'Chapitre ' + t.replace('.', '').toUpperCase();
+  return title;
+}
+
 function isChapterHeading(line) {
   const t = line.trim();
   if (!t || t.length > 80) return false;
@@ -2067,12 +2101,15 @@ function parseBook() {
   if (current && current.lines.join('\n').trim().length > 50) sections.push(current);
   if (!sections.length) sections.push({ title: 'Texte complet', lines: raw.split('\n') });
 
-  bookChapters = sections.map((s, i) => ({
-    index: i, title: s.title,
-    text: s.lines.join('\n').trim(),
-    isContent: !isNonContent(s.title),
-    status: 'pending', blob: null,
-  }));
+  bookChapters = sections.map((s, i) => {
+    const text = s.lines.join('\n').trim();
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    return {
+      index: i, title: s.title, text,
+      isContent: !isNonContent(s.title) && wordCount >= 20,
+      status: 'pending', blob: null,
+    };
+  });
 
   renderChapterList();
   $('bookInfo').textContent = `${bookChapters.length} sections trouvées`;
@@ -2086,6 +2123,7 @@ function renderChapterList() {
   bookChapters.forEach((ch, i) => {
     const words = ch.text.split(/\s+/).filter(Boolean).length;
     const estAudio = Math.round(ch.text.length / 14);
+    const displayTitle = formatChapterTitle(ch.title);
     const statusText = ch.status === 'done' ? '✓ ok' :
                        ch.status === 'error' ? '✗ erreur' :
                        ch.status === 'generating' ? '⟳...' : '';
@@ -2097,9 +2135,10 @@ function renderChapterList() {
        ch.status === 'generating' ? ' ch-active' : '');
     item.innerHTML = `
       <input type="checkbox" ${ch.isContent ? 'checked' : ''} onchange="toggleChapter(${i},this.checked)">
-      <span class="ch-title" title="${ch.title.replace(/"/g,'&quot;')}">${ch.title}</span>
+      <span class="ch-title" title="${ch.title.replace(/"/g,'&quot;')}">${displayTitle}</span>
       <span class="ch-chars">${words}m · ~${estAudio}s</span>
       <span class="ch-status" id="ch-status-${i}">${statusText}</span>
+      ${ch.status === 'error' ? `<button class="ch-retry" onclick="retryChapter(${i})">↺</button>` : ''}
       ${ch.blob ? `<button class="ch-dl" onclick="dlChapter(${i})">↓</button>` : ''}
     `;
     list.appendChild(item);
@@ -2108,6 +2147,7 @@ function renderChapterList() {
   $('bookGenRow').style.display = bookChapters.length ? '' : 'none';
   const done = bookChapters.filter(c => c.status === 'done');
   $('bookDlAllBtn').style.display = done.length > 0 ? '' : 'none';
+  $('bookMergeBtn').style.display = done.length > 0 ? '' : 'none';
   updateBookStats();
 }
 
@@ -2155,46 +2195,129 @@ async function generateBook() {
   if (!toGen.length) return;
 
   bookBusy = true; bookCancelled = false;
-  $('bookGenBtn').disabled = true; $('bookGenBtn').textContent = 'Génération...';
+  bookStartTime = Date.now(); bookChaptersDone = 0;
+  $('bookGenBtn').disabled = true; $('bookGenBtn').style.display = 'none';
+  $('bookResumeBtn').style.display = 'none';
   $('bookCancelBtn').style.display = '';
-  $('bookPbarWrap').style.display = 'block';
+  $('bookProgressRow').style.display = '';
   $('bookPbar').style.width = '0%';
+  $('bookPct').textContent = '0%';
+  $('bookEta').textContent = '';
+  $('bookSpeed').textContent = '';
 
   let done = 0;
   for (const ch of toGen) {
     if (bookCancelled) break;
     ch.status = 'generating'; updateChapterUI(ch.index);
+    scrollToChapter(ch.index);
     try {
       const chunks = splitIntoChunks(ch.text, 4000);
       const parts = [];
       for (const chunk of chunks) {
         if (bookCancelled) break;
-        const blob = await generateChunk(chunk);
+        const blob = await retryableGenerateChunk(chunk);
         if (blob) parts.push(blob);
       }
       if (parts.length && !bookCancelled) {
         ch.blob   = parts.length === 1 ? parts[0] : await concatWavBlobs(parts);
         ch.status = 'done';
+        if ($('autoDlCheck').checked) {
+          await new Promise(r => setTimeout(r, 200));
+          dlChapter(ch.index);
+        }
       } else if (!bookCancelled) {
         ch.status = 'error';
       }
     } catch { ch.status = 'error'; }
-    done++;
-    $('bookPbar').style.width = Math.round(done / toGen.length * 100) + '%';
+    done++; bookChaptersDone = done;
+    updateBookProgress(done, toGen.length);
     updateChapterUI(ch.index);
   }
 
   bookBusy = false;
-  $('bookGenBtn').disabled = false; $('bookGenBtn').textContent = 'Générer la sélection';
   $('bookCancelBtn').style.display = 'none';
+  if (bookCancelled) {
+    $('bookResumeBtn').style.display = '';
+  } else {
+    $('bookGenBtn').disabled = false; $('bookGenBtn').style.display = '';
+  }
   const doneCount = bookChapters.filter(c => c.status === 'done').length;
   $('bookDlAllBtn').style.display = doneCount ? '' : 'none';
+  $('bookMergeBtn').style.display = doneCount ? '' : 'none';
   renderChapterList();
 }
 
 function cancelBook() {
   bookCancelled = true;
-  $('bookCancelBtn').style.display = 'none';
+}
+
+async function retryableGenerateChunk(text, maxTries = 3) {
+  for (let attempt = 0; attempt < maxTries; attempt++) {
+    try {
+      return await generateChunk(text);
+    } catch (e) {
+      if (attempt === maxTries - 1) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+}
+
+function updateBookProgress(done, total) {
+  const pct = Math.round(done / total * 100);
+  $('bookPbar').style.width = pct + '%';
+  $('bookPct').textContent = pct + '%';
+  const elapsed = (Date.now() - bookStartTime) / 1000;
+  const rate = done / elapsed;
+  const etaSecs = (total - done) / rate;
+  if (done > 0 && isFinite(etaSecs)) {
+    const eta = new Date(Date.now() + etaSecs * 1000);
+    const h = eta.getHours().toString().padStart(2, '0');
+    const m = eta.getMinutes().toString().padStart(2, '0');
+    $('bookEta').textContent = `Fin ~${h}h${m}`;
+    $('bookSpeed').textContent = Math.round(rate * 3600) + ' ch/h';
+  }
+}
+
+function scrollToChapter(index) {
+  const el = $(`ch-${index}`);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function retryChapter(index) {
+  if (bookBusy) return;
+  const ch = bookChapters[index];
+  if (!ch || ch.status !== 'error') return;
+  bookBusy = true;
+  ch.status = 'generating'; updateChapterUI(index);
+  try {
+    const chunks = splitIntoChunks(ch.text, 4000);
+    const parts = [];
+    for (const chunk of chunks) {
+      const blob = await retryableGenerateChunk(chunk);
+      if (blob) parts.push(blob);
+    }
+    if (parts.length) {
+      ch.blob = parts.length === 1 ? parts[0] : await concatWavBlobs(parts);
+      ch.status = 'done';
+    } else { ch.status = 'error'; }
+  } catch { ch.status = 'error'; }
+  bookBusy = false;
+  renderChapterList();
+}
+
+async function mergeAllChapters() {
+  const done = bookChapters.filter(c => c.status === 'done' && c.blob);
+  if (!done.length) return;
+  const btn = $('bookMergeBtn');
+  btn.disabled = true; btn.textContent = 'Fusion...';
+  try {
+    const merged = await concatWavBlobs(done.map(c => c.blob));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(merged);
+    a.download = 'audiobook_complet.wav';
+    a.click(); URL.revokeObjectURL(a.href);
+  } catch (e) { alert('Erreur fusion: ' + e.message); }
+  btn.disabled = false; btn.textContent = 'Fusionner en 1 WAV';
 }
 
 async function generateChunk(text) {
@@ -2264,6 +2387,23 @@ function updateChapterUI(index) {
   if (statusEl) statusEl.textContent =
     ch.status === 'done' ? '✓ ok' : ch.status === 'error' ? '✗ erreur' :
     ch.status === 'generating' ? '⟳...' : '';
+  // retry button
+  const existingRetry = item.querySelector('.ch-retry');
+  if (ch.status === 'error' && !existingRetry) {
+    const btn = document.createElement('button');
+    btn.className = 'ch-retry'; btn.textContent = '↺';
+    btn.onclick = () => retryChapter(index);
+    item.appendChild(btn);
+  } else if (ch.status !== 'error' && existingRetry) {
+    existingRetry.remove();
+  }
+  // dl button
+  if (ch.blob && !item.querySelector('.ch-dl')) {
+    const btn = document.createElement('button');
+    btn.className = 'ch-dl'; btn.textContent = '↓';
+    btn.onclick = () => dlChapter(index);
+    item.appendChild(btn);
+  }
 }
 
 function dlChapter(index) {
