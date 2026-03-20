@@ -645,8 +645,10 @@ body {
 
 /* ── Estimation ── */
 .est-bar {
-  font-size: 11px; color: var(--dimmer); padding: 2px 4px; min-height: 16px;
+  font-size: 12px; color: var(--text2); padding: 3px 6px; min-height: 20px;
   font-family: 'SF Mono', 'Fira Code', monospace;
+  background: var(--surface2); border-radius: 0 0 var(--radius) var(--radius);
+  border: 1px solid var(--border); border-top: none;
 }
 
 /* ── Audiobook ── */
@@ -989,7 +991,7 @@ let presetRefs = [];
 let loadedModel  = null;
 let loadingModel = null;
 let dlBlob   = null;
-let lastRtf  = 4.0;
+let lastRtf  = 3.5; // 1.7B-Base ≈ 3.5× RTF, updated after first generation
 let bookBusy = false;
 let bookChapters = [];
 let bookCancelled = false;
@@ -1184,7 +1186,9 @@ async function loadModel() {
     if (d.status === 'loaded' || d.status === 'already_loaded') {
       loadedModel  = loadingModel;
       loadingModel = null;
+      lastRtf = loadedModel?.includes('1.7B') ? 3.5 : 4.0; // 0.6B default
       setPill('loaded', 'ready');
+      updateEstimation();
       fetchStatus();
     } else {
       loadingModel = null;
@@ -1791,7 +1795,7 @@ async function runStream(fd) {
         $('queueBar').className = 'queue-bar';
         pushMetrics(d.ttfa_ms, d.rtf, d.total_audio_s, d.voice_clone_ms);
         await chunkQ;
-        setDone();
+        setDone(d.total_ms / 1000, d.total_audio_s);
         const blob = buildFinalWav();
         if (blob) setPlayer(blob);
 
@@ -1810,7 +1814,7 @@ async function runNonStream(fd) {
   const d = await res.json();
   const m = d.metrics;
   pushMetrics(m.total_ms, m.rtf, m.audio_duration_s, m.voice_clone_ms);
-  setDone();
+  setDone(m.total_ms / 1000, m.audio_duration_s);
   const bytes = Uint8Array.from(atob(d.audio_b64), c => c.charCodeAt(0));
   const blob  = new Blob([bytes], { type: 'audio/wav' });
   setPlayer(blob);
@@ -1841,10 +1845,11 @@ function pushClientMetrics() {
   if (lastBufS != null)
     $('mBuf').textContent = lastBufS.toFixed(2) + 's';
 }
-function setDone() {
+function setDone(actualGenSecs, actualAudioSecs) {
   $('waveInd').classList.add('off');
   const pb = $('pbar');
   pb.classList.remove('spin'); pb.style.width = '100%';
+  if (actualGenSecs != null) updateEstimation(actualGenSecs, actualAudioSecs);
 }
 function setPlayer(blob) {
   dlBlob = blob;
@@ -1895,13 +1900,21 @@ function switchTab(tab) {
 }
 
 // ── Estimation ────────────────────────────────────────────────────────────────
-function updateEstimation() {
-  const chars = ($('textIn').value || '').length;
-  const el = $('estBar');
-  if (!chars) { el.textContent = ''; return; }
-  const audioSecs = chars / 14;
+function updateEstimation(actualGenSecs, actualAudioSecs) {
+  const text  = $('textIn').value || '';
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const el    = $('estBar');
+  if (!words) { el.textContent = ''; return; }
+  const MAX_AUDIO_S = 1800 / 12;
+  const rawAudio  = words / 2.5;
+  const audioSecs = Math.min(rawAudio, MAX_AUDIO_S);
   const genSecs   = audioSecs / lastRtf;
-  el.textContent = `~${audioSecs.toFixed(0)}s audio  ·  ~${genSecs.toFixed(0)}s de génération`;
+  const capped    = rawAudio > MAX_AUDIO_S;
+  let txt = `~${audioSecs.toFixed(0)}s audio · ~${genSecs.toFixed(0)}s génération`;
+  if (capped) txt += ' ⚠ texte trop long (max ~150s)';
+  if (actualGenSecs != null)
+    txt += `  —  réel : ${actualAudioSecs.toFixed(1)}s audio en ${actualGenSecs.toFixed(1)}s`;
+  el.textContent = txt;
 }
 
 // ── Audiobook ─────────────────────────────────────────────────────────────────
