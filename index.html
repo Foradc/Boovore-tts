@@ -2111,6 +2111,17 @@ function parseBook() {
     };
   });
 
+  // Auto-uncheck front matter: ALL CAPS sections before the first real chapter
+  const firstRealIdx = bookChapters.findIndex(ch =>
+    /^(chapter|chapitre|part[ie]*|première|deuxième|troisième|prologue|épilogue|\d+\.?\s*$|[IVX]{1,6}\.?\s*$)/i.test(ch.title.trim())
+  );
+  if (firstRealIdx > 0) {
+    bookChapters.slice(0, firstRealIdx).forEach(ch => {
+      if (ch.title === ch.title.toUpperCase() && /[A-Z]{2,}/.test(ch.title))
+        ch.isContent = false;
+    });
+  }
+
   renderChapterList();
   $('bookInfo').textContent = `${bookChapters.length} sections trouvées`;
 }
