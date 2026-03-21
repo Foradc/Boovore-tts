@@ -834,6 +834,17 @@ body {
         </button>
       </div>
     </div>
+    <!-- Narrateur FR (XTTS) -->
+    <div class="mode-row" id="rowXtts" style="display:none">
+      <div class="label">Narrateur FR — voix française entraînée (XTTS)<span class="switch-tag">OFFLINE</span></div>
+      <div class="row">
+        <span style="font-size:11px;color:var(--dim);flex:1">Voix de narrateur français, optimisée pour les livres audio.</span>
+        <button class="play-btn" onclick="generateXtts()" title="Générer">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+        </button>
+      </div>
+    </div>
+
     <!-- Messages -->
     <div class="msg-bar" id="msgBar"></div>
     <div class="queue-bar" id="queueBar"></div>
@@ -1189,14 +1200,48 @@ async function fetchStatus() {
     const d = await fetch('/status').then(r => r.json());
     applyAvailableModels(d.available_models || []);
     if (d.loaded && d.model) {
-      // Only trust loadedModel when the server confirms it's actually loaded
       loadedModel = d.model;
       $('modelSel').value = d.model;
     }
     populateSpeakers(d.speakers || []);
     renderPresetRefs(d.preset_refs || []);
     setPill(d.loaded ? 'loaded' : 'off', d.loaded ? 'ready' : 'not loaded');
+    // Show XTTS row if narrator server is running
+    $('rowXtts').style.display = d.xtts_available ? '' : 'none';
+    if (d.xtts_available) $('rowXtts').classList.add('compatible');
   } catch { setPill('off', 'offline'); }
+}
+
+async function generateXtts() {
+  if (busy) return;
+  const text = $('textIn').value.trim();
+  if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
+  hideMsg();
+  busy = true; setPlayBtns(true);
+  $('results').classList.add('show');
+  $('player').parentElement.style.display = 'none';
+  $('waveInd').classList.remove('off');
+  $('pbarWrap').classList.add('show');
+  const pb = $('pbar'); pb.style.width = ''; pb.classList.add('spin');
+  resetMetrics();
+  const t0 = performance.now();
+  try {
+    const fd = new FormData();
+    fd.append('text', text);
+    const res = await fetch('/generate/xtts_narrator', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur XTTS'); }
+    const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+    const genSecs = (performance.now() - t0) / 1000;
+    setPlayer(blob);
+    $('player').play().catch(() => {});
+    pb.classList.remove('spin'); pb.style.width = '100%';
+    $('waveInd').classList.add('off');
+    $('mClient').textContent = genSecs.toFixed(1) + 's';
+  } catch(e) {
+    showMsg('err', e.message);
+    pb.classList.remove('spin'); pb.style.width = '0%';
+  }
+  busy = false; setPlayBtns(false);
 }
 
 async function loadModel() {
@@ -1249,6 +1294,12 @@ function updateModeRows() {
     el.classList.toggle('compatible',   id === activeRow && !isLoading);
     el.classList.toggle('loading',      id === activeRow &&  isLoading);
     el.classList.toggle('incompatible', activeRow !== null && id !== activeRow);
+  }
+  // XTTS row is independent — stays compatible if visible
+  const xtts = $('rowXtts');
+  if (xtts && xtts.style.display !== 'none') {
+    xtts.classList.remove('incompatible', 'loading');
+    xtts.classList.add('compatible');
   }
 }
 
