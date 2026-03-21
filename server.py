@@ -29,7 +29,18 @@ import torchaudio
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+
+# ── XTTS Narrator proxy ───────────────────────────────────────────────────────
+import urllib.request, urllib.error
+_XTTS_URL = "http://localhost:7861"
+
+def _xtts_available() -> bool:
+    try:
+        urllib.request.urlopen(f"{_XTTS_URL}/status", timeout=1)
+        return True
+    except Exception:
+        return False
 
 # Allow running from any directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -273,7 +284,24 @@ async def get_status():
         ],
         "queue_depth": _generation_waiters,
         "cached_models": list(_model_cache.keys()),
+        "xtts_available": _xtts_available(),
     }
+
+
+@app.post("/generate/xtts_narrator")
+async def generate_xtts_narrator(text: str = Form(...)):
+    """Proxy to XTTS narrator server on port 7861."""
+    if not _xtts_available():
+        raise HTTPException(status_code=503, detail="XTTS narrator server not running. Lancez start_xtts.bat")
+    import urllib.parse
+    data = urllib.parse.urlencode({"text": text}).encode()
+    req = urllib.request.Request(f"{_XTTS_URL}/generate", data=data)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            wav_bytes = resp.read()
+        return Response(content=wav_bytes, media_type="audio/wav")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/preset_ref/{preset_id}")
