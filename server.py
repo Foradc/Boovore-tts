@@ -34,6 +34,11 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 # ── Fish-Speech ───────────────────────────────────────────────────────────────
 FISH_SPEECH_REPO = Path("/tmp/fish-speech")
 FISH_SPEECH_MODEL = Path("/root/fish-speech-model")
+
+# Patch torchaudio nightly: list_audio_backends removed in recent builds
+import torchaudio as _torchaudio
+if not hasattr(_torchaudio, "list_audio_backends"):
+    _torchaudio.list_audio_backends = lambda: ["ffmpeg", "sox"]
 _fish_engine = None
 _fish_lock = threading.Lock()
 
@@ -80,10 +85,24 @@ _kokoro_pipeline = None
 _kokoro_lock = threading.Lock()
 
 KOKORO_VOICES_FR = {
-    "ff_siwis":  "Siwis — Femme FR",
-    "af_heart":  "Heart — Femme EN",
-    "bm_george": "George — Homme EN (UK)",
-    "am_echo":   "Echo — Homme EN",
+    # French
+    "ff_siwis":   "Siwis — FR Femme ★",
+    # American English — Female
+    "af_heart":   "Heart — EN Femme ★",
+    "af_bella":   "Bella — EN Femme",
+    "af_nicole":  "Nicole — EN Femme (ASMR)",
+    "af_sarah":   "Sarah — EN Femme",
+    "af_sky":     "Sky — EN Femme",
+    # American English — Male
+    "am_echo":    "Echo — EN Homme",
+    "am_michael": "Michael — EN Homme",
+    "am_adam":    "Adam — EN Homme",
+    # British English — Female
+    "bf_emma":    "Emma — EN(UK) Femme",
+    "bf_isabella":"Isabella — EN(UK) Femme",
+    # British English — Male
+    "bm_george":  "George — EN(UK) Homme",
+    "bm_lewis":   "Lewis — EN(UK) Homme",
 }
 
 def _get_kokoro():
@@ -112,8 +131,7 @@ def _get_chatterbox():
 # ── F5-TTS French (RASPIAUDIO checkpoint) ────────────────────────────────────
 _f5_model = None
 _f5_lock = threading.Lock()
-F5_FRENCH_CKPT = "hf://RASPIAUDIO/F5-French-MixedSpeakers-reduced/model_last_reduced.pt"
-F5_FRENCH_VOCAB = "hf://RASPIAUDIO/F5-French-MixedSpeakers-reduced/vocab.txt"
+F5_REPO = "RASPIAUDIO/F5-French-MixedSpeakers-reduced"
 
 def _get_f5():
     global _f5_model
@@ -121,7 +139,10 @@ def _get_f5():
         with _f5_lock:
             if _f5_model is None:
                 from f5_tts.api import F5TTS
-                _f5_model = F5TTS(model_type="F5-TTS", ckpt_file=F5_FRENCH_CKPT, vocab_file=F5_FRENCH_VOCAB)
+                from huggingface_hub import hf_hub_download
+                ckpt  = hf_hub_download(F5_REPO, "model_last_reduced.pt")
+                vocab = hf_hub_download(F5_REPO, "vocab.txt")
+                _f5_model = F5TTS(model="F5TTS_v1_Base", ckpt_file=ckpt, vocab_file=vocab)
     return _f5_model
 
 # ── Qwen3-TTS (local) ────────────────────────────────────────────────────────
@@ -661,9 +682,17 @@ async def generate_f5_fr(
             ref_path = tmp.name
             cleanup_ref = True
     else:
-        default_ref = Path(__file__).parent / "narrator_ref.wav"
-        if default_ref.exists():
-            ref_path = str(default_ref)
+        # Try local narrator ref, then bundled F5-TTS English ref as fallback
+        for candidate in [
+            Path(__file__).parent / "narrator_ref.wav",
+            Path("/usr/local/lib/python3.12/dist-packages/f5_tts/infer/examples/basic/basic_ref_en.wav"),
+        ]:
+            if candidate.exists():
+                ref_path = str(candidate)
+                # Use bundled ref text if it matches the bundled audio
+                if "basic_ref_en" in ref_path and not ref_text:
+                    ref_text = "Some call me nature, others call me mother nature."
+                break
 
     def _run():
         model = _get_f5()
@@ -671,7 +700,7 @@ async def generate_f5_fr(
         out_path = out_tmp.name
         out_tmp.close()
         try:
-            model.infer(ref_file=ref_path, ref_text=ref_text or None, gen_text=text, file_wave=out_path)
+            model.infer(ref_file=ref_path, ref_text=ref_text or "", gen_text=text, file_wave=out_path)
             return open(out_path, "rb").read()
         finally:
             os.unlink(out_path)
@@ -728,9 +757,13 @@ async def generate_fish(
     text: str = Form(...),
     ref_wav: UploadFile = File(None),
     ref_text: str = Form(""),
-    temperature: float = Form(0.7),
-    top_p: float = Form(0.7),
-    repetition_penalty: float = Form(1.2),
+    temperature: float = Form(0.8),
+    top_p: float = Form(0.8),
+    repetition_penalty: float = Form(1.1),
+    max_new_tokens: int = Form(1024),
+    chunk_length: int = Form(200),
+    latency: str = Form("normal"),
+    normalize: bool = Form(True),
     seed: int = Form(None),
 ):
     ref_path = None
@@ -757,6 +790,10 @@ async def generate_fish(
             temperature=max(0.1, min(1.0, temperature)),
             top_p=max(0.1, min(1.0, top_p)),
             repetition_penalty=max(0.9, min(2.0, repetition_penalty)),
+            max_new_tokens=max(64, min(4096, max_new_tokens)),
+            chunk_length=max(100, min(1000, chunk_length)),
+            latency=latency if latency in ("normal", "balanced") else "normal",
+            normalize=normalize,
             seed=seed,
             format="wav",
             streaming=False,
