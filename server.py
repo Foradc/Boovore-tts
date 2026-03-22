@@ -833,6 +833,7 @@ async def generate_fish(
     text: str = Form(...),
     ref_wav: UploadFile = File(None),
     ref_text: str = Form(""),
+    prev_wav: UploadFile = File(None),   # rolling reference: last N seconds of previous chunk
     temperature: float = Form(0.8),
     top_p: float = Form(0.8),
     repetition_penalty: float = Form(1.1),
@@ -842,11 +843,15 @@ async def generate_fish(
     normalize: bool = Form(True),
     seed: int = Form(None),
     auto_split: bool = Form(False),
+    rolling_ref_secs: float = Form(6.0),  # seconds to extract from tail of output for next ref
 ):
     if not _engine_enabled("fish"):
         raise HTTPException(status_code=503, detail="Fish-Speech engine not enabled on this server.")
     ref_path = None
+    prev_path = None
     cleanup_ref = False
+    cleanup_prev = False
+
     if ref_wav and ref_wav.filename:
         ref_bytes = await ref_wav.read()
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -854,18 +859,26 @@ async def generate_fish(
             ref_path = tmp.name
             cleanup_ref = True
 
+    # Rolling reference: previous chunk's tail audio (takes priority over static ref)
+    if prev_wav and prev_wav.filename:
+        prev_bytes = await prev_wav.read()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(prev_bytes)
+            prev_path = tmp.name
+            cleanup_prev = True
+
     def _run():
         sys.path.insert(0, str(FISH_SPEECH_REPO))
         from fish_speech.utils.schema import ServeTTSRequest, ServeReferenceAudio
         engine = _get_fish_engine()
 
-        # Build references once — reused across all text splits
+        # Rolling reference takes priority; fall back to static ref
+        active_ref_path = prev_path or ref_path
         references = []
-        ref_audio_bytes = None
-        if ref_path:
-            with open(ref_path, "rb") as f:
-                ref_audio_bytes = f.read()
-            references = [ServeReferenceAudio(audio=ref_audio_bytes, text=ref_text or "")]
+        if active_ref_path:
+            with open(active_ref_path, "rb") as f:
+                ref_bytes_data = f.read()
+            references = [ServeReferenceAudio(audio=ref_bytes_data, text=ref_text or "")]
 
         # Optionally split long text at paragraph boundaries
         texts = _fish_split_text(text) if auto_split and len(text) > 600 else [text]
@@ -899,19 +912,34 @@ async def generate_fish(
         if not all_audio:
             raise ValueError("Fish-Speech: no audio generated")
         combined = np.concatenate(all_audio)
+
+        # Extract tail for rolling reference (last N seconds)
+        tail_secs = max(3.0, min(10.0, rolling_ref_secs))
+        tail_samples = int(tail_secs * sample_rate)
+        tail_audio = combined[-tail_samples:] if len(combined) > tail_samples else combined
+
         buf = io.BytesIO()
         sf.write(buf, combined, sample_rate, format="WAV")
-        buf.seek(0)
-        return buf.read()
+        tail_buf = io.BytesIO()
+        sf.write(tail_buf, tail_audio, sample_rate, format="WAV")
+
+        return buf.getvalue(), tail_buf.getvalue(), sample_rate
 
     try:
-        wav_bytes = await asyncio.get_event_loop().run_in_executor(None, _run)
-        return Response(content=wav_bytes, media_type="audio/wav")
+        wav_bytes, tail_bytes, _ = await asyncio.get_event_loop().run_in_executor(None, _run)
+        tail_b64 = base64.b64encode(tail_bytes).decode()
+        return Response(
+            content=wav_bytes,
+            media_type="audio/wav",
+            headers={"X-Rolling-Ref-B64": tail_b64, "Access-Control-Expose-Headers": "X-Rolling-Ref-B64"},
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if cleanup_ref and ref_path and os.path.exists(ref_path):
             os.unlink(ref_path)
+        if cleanup_prev and prev_path and os.path.exists(prev_path):
+            os.unlink(prev_path)
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
