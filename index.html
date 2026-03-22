@@ -718,6 +718,83 @@ select option, select optgroup {
 .book-gen-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .book-stats { font-size: 11px; color: var(--dim); font-family: monospace; }
 .book-voice-note { font-size: 11px; color: var(--dimmer); display:none; }
+
+/* ── Book Reader Overlay ── */
+.reader-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: var(--bg); display: flex; flex-direction: column;
+}
+.reader-topbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface); flex-shrink: 0; flex-wrap: wrap;
+}
+.reader-title {
+  font-size: 13px; font-weight: 600; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 80px;
+}
+.reader-body { display: flex; flex: 1; overflow: hidden; }
+.reader-text-col {
+  flex: 1; overflow-y: auto; padding: 28px 48px;
+  max-width: 760px; margin: 0 auto;
+}
+.reader-sidebar {
+  width: 210px; flex-shrink: 0; border-left: 1px solid var(--border);
+  overflow-y: auto; padding: 12px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.reader-para {
+  margin: 0 0 0.9em; line-height: 1.8; font-size: 15px; color: var(--text);
+  padding: 5px 10px; border-radius: 5px; cursor: pointer;
+  transition: background 0.1s; position: relative; border-left: 3px solid transparent; border-right: 3px solid transparent;
+}
+.reader-para:hover { background: var(--surface2); }
+.reader-para.rp-selected { background: rgba(139,92,246,0.1); }
+.reader-para.rp-start { border-left-color: var(--green); }
+.reader-para.rp-end { border-right-color: var(--red); }
+.reader-para.rp-start::before {
+  content: '▶'; position: absolute; left: -16px; color: var(--green);
+  font-size: 10px; top: 7px;
+}
+.reader-para.rp-end::after {
+  content: '⏹'; position: absolute; right: -16px; color: var(--red);
+  font-size: 10px; top: 7px;
+}
+.reader-ch-sep {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--accent); padding: 18px 10px 4px; border-top: 1px solid var(--border); margin-top: 10px;
+}
+.reader-ch-sep:first-child { padding-top: 0; border-top: none; margin-top: 0; }
+.reader-nav {
+  display: flex; align-items: center; gap: 8px; justify-content: center;
+  padding: 8px 14px; border-top: 1px solid var(--border);
+  flex-shrink: 0; background: var(--surface); flex-wrap: wrap;
+}
+.reader-page-info { font-size: 12px; color: var(--dim); font-family: monospace; min-width: 70px; text-align: center; }
+.reader-mode-btn {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: 11px; cursor: pointer; background: var(--surface2); color: var(--text2);
+  transition: all 0.12s; font-family: inherit;
+}
+.reader-mode-btn.mode-start.ractive { background: rgba(34,197,94,0.2); border-color: var(--green); color: var(--green); font-weight: 700; }
+.reader-mode-btn.mode-end.ractive { background: rgba(239,68,68,0.2); border-color: var(--red); color: var(--red); font-weight: 700; }
+.reader-apply-btn {
+  padding: 5px 14px; background: var(--accent); color: #fff;
+  border: none; border-radius: 6px; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.reader-apply-btn:hover { background: var(--accent2); }
+.reader-side-lbl {
+  font-size: 10px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; color: var(--dimmer); margin-top: 6px;
+}
+.reader-ch-item {
+  padding: 3px 6px; border-radius: 4px; cursor: pointer; font-size: 11px;
+  transition: background 0.1s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.reader-ch-item.rci-in { background: var(--accent-bg); color: var(--accent); }
+.reader-ch-item.rci-out { color: var(--dimmer); }
+.reader-ch-item:hover { background: var(--surface2); }
 /* Book voice selector */
 .bvs-wrap { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg2,var(--surface)); margin-bottom: 2px; }
 .bvs-label { font-size: 10px; color: var(--dim); font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.6px; }
@@ -1496,6 +1573,7 @@ select option, select optgroup {
     <!-- Chapter list header (select controls + total) -->
     <div id="chapterListHeader" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px">
       <span style="font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:var(--dimmer)">Chapitres</span>
+      <button class="ch-dl" onclick="openReader()" style="font-size:10px;background:var(--accent-bg);border-color:var(--accent);color:var(--accent)">📖 Parcourir</button>
       <button class="ch-dl" onclick="selectAllChapters(true)" style="font-size:10px">Tout sélectionner</button>
       <button class="ch-dl" onclick="selectAllChapters(false)" style="font-size:10px">Tout désélectionner</button>
       <button class="ch-dl" onclick="selectContentChapters()" style="font-size:10px">Sélection auto</button>
@@ -1529,6 +1607,33 @@ select option, select optgroup {
   </div><!-- /#panelBook -->
 
 </div><!-- /.app -->
+
+<!-- ── Book Reader Overlay ── -->
+<div id="readerOverlay" class="reader-overlay" style="display:none">
+  <div class="reader-topbar">
+    <button class="ibtn" onclick="closeReader()" title="Retour" style="font-size:18px;padding:2px 8px">←</button>
+    <span class="reader-title" id="readerBookTitle">—</span>
+    <button class="reader-mode-btn mode-start ractive" id="readerModeStart" onclick="setReaderMode('start')">▶ Début</button>
+    <button class="reader-mode-btn mode-end" id="readerModeEnd" onclick="setReaderMode('end')">⏹ Fin</button>
+    <button class="reader-apply-btn" onclick="applyReaderSelection()">Appliquer ✓</button>
+  </div>
+  <div class="reader-body">
+    <div class="reader-text-col" id="readerTextCol"></div>
+    <div class="reader-sidebar">
+      <div class="reader-side-lbl">Sélection</div>
+      <div id="readerSideSel" style="font-size:12px;color:var(--dim);line-height:1.7"></div>
+      <div class="reader-side-lbl" style="margin-top:10px">Chapitres</div>
+      <div id="readerSideChapters" style="display:flex;flex-direction:column;gap:2px"></div>
+    </div>
+  </div>
+  <div class="reader-nav">
+    <button class="ch-dl" onclick="readerPrevPage()">← Préc</button>
+    <span class="reader-page-info" id="readerPageInfo">Page 1/1</span>
+    <button class="ch-dl" onclick="readerNextPage()">Suiv →</button>
+    <span style="flex:1"></span>
+    <span style="font-size:10px;color:var(--dimmer)">Clic : début &nbsp;·&nbsp; Shift+clic ou clic droit : fin</span>
+  </div>
+</div>
 
 <!-- Settings bottom sheet -->
 <div class="sov" id="settingsOv" onclick="closeSettings(event)">
@@ -1654,6 +1759,7 @@ let dlBlob   = null;
 let lastRtf  = 3.5; // 1.7B-Base ≈ 3.5× RTF, updated after first generation
 let bookBusy = false;
 let bookChapters = [];
+let bookTitle = '';
 let bookCancelled = false;
 let bookStartTime = 0;
 let bookChaptersDone = 0;
@@ -3095,6 +3201,7 @@ function isSectionSeparator(line) {
 async function loadBookFile(input) {
   const file = input.files[0];
   if (!file) return;
+  bookTitle = file.name.replace(/\.[^.]+$/, '');
   $('bookInfo').textContent = 'Extraction en cours...';
   try {
     if (file.name.endsWith('.epub')) {
@@ -3107,7 +3214,7 @@ async function loadBookFile(input) {
             title: c.title || `Section ${i + 1}`,
             text: c.text,
             isContent: !isNonContent(c.title || '') && wordCount >= 20,
-            status: 'pending', blob: null,
+            trimmedText: null, status: 'pending', blob: null,
           };
         });
         // Auto-uncheck front matter (sections before first real chapter)
@@ -3229,11 +3336,17 @@ async function extractEpubText(file) {
 }
 
 function parseBook() {
-  const raw = $('bookText').value.trim();
+  let raw = $('bookText').value.trim();
   if (!raw) { $('bookInfo').textContent = 'Colle du texte d\'abord.'; return; }
 
+  // ── Project Gutenberg header/footer strip (arXiv:0707.1913) ──
+  const pgStart = raw.match(/\*{3}\s*START OF (THIS|THE) PROJECT GUTENBERG EBOOK[^\n]*/i);
+  const pgEnd   = raw.match(/\*{3}\s*END OF (THIS|THE) PROJECT GUTENBERG EBOOK[^\n]*/i);
+  if (pgStart) raw = raw.slice(raw.indexOf(pgStart[0]) + pgStart[0].length).trimStart();
+  if (pgEnd)   raw = raw.slice(0, raw.indexOf(pgEnd[0])).trimEnd();
+
   const lines = raw.split('\n');
-  const sections = [];
+  const rawSections = [];
   let current = null;
   let sepCounter = 0;
 
@@ -3244,7 +3357,7 @@ function parseBook() {
 
     // Section separator lines (---, ***, * * *)
     if (isSectionSeparator(trimmed)) {
-      if (current && current.lines.join('\n').trim().length > 50) sections.push(current);
+      if (current && current.lines.join('\n').trim().length > 50) rawSections.push(current);
       sepCounter++;
       current = { title: `§${sepCounter}`, lines: [], isSep: true };
       continue;
@@ -3252,7 +3365,7 @@ function parseBook() {
 
     // Strong patterns (always a heading, even without surrounding blank lines)
     const isStrong = trimmed && (
-      /^#{1,3}\s+\S/.test(trimmed) ||  // Markdown
+      /^#{1,3}\s+\S/.test(trimmed) ||
       /^(chapter|chapitre|kapitel|cap[íi]tulo|capitolo)\s+/i.test(trimmed) ||
       /^(part|partie|teil|parte)\s+\S/i.test(trimmed) ||
       /^\d{1,3}[\.\-–—:]\s*\S/.test(trimmed) ||
@@ -3262,8 +3375,7 @@ function parseBook() {
 
     if (trimmed && isChapterHeading(trimmed) && (prevEmpty || nextEmpty || isStrong)) {
       if (current && current.lines.join('\n').trim().length > 50)
-        sections.push(current);
-      // Strip markdown # prefix for display
+        rawSections.push(current);
       const cleanTitle = trimmed.replace(/^#{1,3}\s*/, '');
       current = { title: cleanTitle, lines: [] };
     } else if (current) {
@@ -3272,7 +3384,22 @@ function parseBook() {
       current = { title: 'Début', lines: [lines[i]] };
     }
   }
-  if (current && current.lines.join('\n').trim().length > 50) sections.push(current);
+  if (current && current.lines.join('\n').trim().length > 50) rawSections.push(current);
+
+  // ── Anti-TOC heuristic (Chapter Captor paper + chapterize) ──
+  // If consecutive sections have < 4 non-empty body lines → they're TOC entries, skip them.
+  let tocEndIdx = 0;
+  if (rawSections.length > 4) {
+    let run = 0;
+    for (let si = 0; si < Math.min(rawSections.length, 20); si++) {
+      const bodyLines = rawSections[si].lines.filter(l => l.trim().length > 0).length;
+      if (bodyLines < 4) { run++; }
+      else { if (run >= 3) tocEndIdx = si; break; }
+    }
+    if (run >= 3 && tocEndIdx === 0) tocEndIdx = run;
+  }
+
+  let sections = rawSections.length ? rawSections : [];
 
   // Fallback: split by blank-line paragraphs if no chapters detected
   if (!sections.length) {
@@ -3288,19 +3415,22 @@ function parseBook() {
     const text = s.lines.join('\n').trim();
     const wordCount = text.split(/\s+/).filter(Boolean).length;
     return {
-      index: i, title: s.title, text,
+      index: i, title: s.title, text, trimmedText: null,
       isContent: !isNonContent(s.title) && wordCount >= 30,
       status: 'pending', blob: null,
     };
   });
 
-  // Auto-uncheck front matter before first real chapter keyword
+  // ── Multi-pass front matter deselection ──
+  // Pass 1: TOC sections detected by anti-TOC heuristic
+  if (tocEndIdx > 0) bookChapters.slice(0, tocEndIdx).forEach(ch => { ch.isContent = false; });
+  // Pass 2: sections before first real chapter keyword
   const firstRealIdx = bookChapters.findIndex(ch =>
-    /^(chapter|chapitre|part[ie]*|prologue|épilogue|\d+\.?\s*$|[IVX]{1,6}\.?\s*$)/i.test(ch.title.trim())
+    /^(chapter|chapitre|part[ie]*|prologue|épilogue|livre\s+\d|book\s+\d|\d+\.?\s*$|[IVX]{1,6}\.?\s*$)/i.test(ch.title.trim())
   );
-  if (firstRealIdx > 0) {
-    bookChapters.slice(0, firstRealIdx).forEach(ch => { ch.isContent = false; });
-  }
+  if (firstRealIdx > 0) bookChapters.slice(0, firstRealIdx).forEach(ch => { ch.isContent = false; });
+  // Pass 3: known non-content title patterns
+  bookChapters.forEach(ch => { if (isNonContent(ch.title)) ch.isContent = false; });
 
   renderChapterList();
   const selected = bookChapters.filter(c => c.isContent).length;
@@ -3342,6 +3472,201 @@ function onBookDrop(event) {
   if (!file) return;
   const fakeInput = { files: [file] };
   loadBookFile(fakeInput);
+}
+
+// ──────────────────────────────────────────────────────
+// BOOK READER
+// ──────────────────────────────────────────────────────
+const READER_PARAS_PER_PAGE = 14;
+let readerParagraphs = [];
+let readerStartPara  = 0;
+let readerEndPara    = -1;
+let readerPage       = 0;
+let readerMode       = 'start'; // 'start' | 'end'
+
+function buildReaderParagraphs() {
+  readerParagraphs = [];
+  bookChapters.forEach((ch, ci) => {
+    const paras = ch.text.split(/\n\s*\n+/)
+      .map(p => p.trim().replace(/\s+/g, ' '))
+      .filter(p => p.length > 15);
+    if (!paras.length) return;
+    paras.forEach((p, pi) => {
+      readerParagraphs.push({
+        chapterIdx: ci,
+        chapterTitle: ch.title,
+        isChapterStart: pi === 0,
+        localIdx: pi,      // index within chapter
+        text: p
+        // globalIdx assigned after push below
+      });
+      readerParagraphs[readerParagraphs.length - 1].globalIdx = readerParagraphs.length - 1;
+    });
+  });
+}
+
+function openReader() {
+  if (!bookChapters.length) return;
+  buildReaderParagraphs();
+  if (readerParagraphs.length === 0) return;
+  if (readerEndPara < 0 || readerEndPara >= readerParagraphs.length)
+    readerEndPara = readerParagraphs.length - 1;
+  $('readerBookTitle').textContent = bookTitle || 'Livre';
+  readerPage = Math.floor(readerStartPara / READER_PARAS_PER_PAGE);
+  setReaderMode('start');
+  renderReaderPage();
+  $('readerOverlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeReader() {
+  $('readerOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function setReaderMode(mode) {
+  readerMode = mode;
+  $('readerModeStart').classList.toggle('ractive', mode === 'start');
+  $('readerModeEnd').classList.toggle('ractive', mode === 'end');
+}
+
+function readerNextPage() {
+  const total = Math.ceil(readerParagraphs.length / READER_PARAS_PER_PAGE);
+  if (readerPage < total - 1) { readerPage++; renderReaderPage(); }
+}
+function readerPrevPage() {
+  if (readerPage > 0) { readerPage--; renderReaderPage(); }
+}
+
+function readerClickPara(globalIdx, isShift, isRight) {
+  if (isRight || isShift || readerMode === 'end') {
+    if (globalIdx >= readerStartPara) {
+      readerEndPara = globalIdx;
+      setReaderMode('start');
+    }
+  } else {
+    readerStartPara = globalIdx;
+    if (readerEndPara < readerStartPara) readerEndPara = readerParagraphs.length - 1;
+    setReaderMode('end');
+  }
+  renderReaderPage();
+}
+
+function renderReaderPage() {
+  const total = Math.ceil(readerParagraphs.length / READER_PARAS_PER_PAGE);
+  $('readerPageInfo').textContent = `Page ${readerPage + 1} / ${total}`;
+
+  const start = readerPage * READER_PARAS_PER_PAGE;
+  const end   = Math.min(start + READER_PARAS_PER_PAGE, readerParagraphs.length);
+  const col   = $('readerTextCol');
+  col.innerHTML = '';
+
+  for (let i = start; i < end; i++) {
+    const rp = readerParagraphs[i];
+
+    if (rp.isChapterStart) {
+      const sep = document.createElement('div');
+      sep.className = 'reader-ch-sep';
+      sep.textContent = rp.chapterTitle;
+      col.appendChild(sep);
+    }
+
+    const isStart    = i === readerStartPara;
+    const isEnd      = i === readerEndPara;
+    const isSelected = i >= readerStartPara && i <= readerEndPara;
+
+    const p = document.createElement('p');
+    p.className = 'reader-para' +
+      (isSelected ? ' rp-selected' : '') +
+      (isStart    ? ' rp-start'    : '') +
+      (isEnd      ? ' rp-end'      : '');
+    p.textContent = rp.text;
+    p.title = 'Clic : début · Shift+clic / clic droit : fin';
+    p.onclick     = e => readerClickPara(i, e.shiftKey, false);
+    p.oncontextmenu = e => { e.preventDefault(); readerClickPara(i, false, true); };
+    col.appendChild(p);
+  }
+
+  // Sidebar: selection info
+  const startRp  = readerParagraphs[readerStartPara] || readerParagraphs[0];
+  const endRp    = readerParagraphs[readerEndPara]   || readerParagraphs[readerParagraphs.length - 1];
+  const selWords = readerParagraphs
+    .slice(readerStartPara, readerEndPara + 1)
+    .reduce((s, p) => s + p.text.split(/\s+/).length, 0);
+  const estMin = Math.round(selWords / 130);
+
+  $('readerSideSel').innerHTML = `
+    <div style="color:var(--green)">▶ <b>${(startRp?.chapterTitle || '—').slice(0, 25)}</b></div>
+    <div style="font-size:10px;color:var(--dimmer);margin-left:10px">para ${readerStartPara + 1}</div>
+    <div style="margin-top:6px;color:var(--red)">⏹ <b>${(endRp?.chapterTitle || '—').slice(0, 25)}</b></div>
+    <div style="font-size:10px;color:var(--dimmer);margin-left:10px">para ${readerEndPara + 1}</div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:11px">
+      ${readerEndPara - readerStartPara + 1} paragraphes<br>
+      ~${selWords.toLocaleString()} mots<br>
+      <b style="color:var(--accent)">~${estMin} min audio</b>
+    </div>`;
+
+  // Sidebar: chapter list
+  const chSide = $('readerSideChapters');
+  chSide.innerHTML = '';
+  const startCh = startRp?.chapterIdx ?? 0;
+  const endCh   = endRp?.chapterIdx   ?? bookChapters.length - 1;
+  bookChapters.forEach((ch, ci) => {
+    const inRange = ci >= startCh && ci <= endCh;
+    const div = document.createElement('div');
+    div.className = 'reader-ch-item ' + (inRange ? 'rci-in' : 'rci-out');
+    div.textContent = (inRange ? '☑ ' : '☐ ') + (ch.title || `Section ${ci + 1}`).slice(0, 28);
+    div.title = ch.title;
+    div.onclick = () => {
+      const firstPara = readerParagraphs.findIndex(p => p.chapterIdx === ci);
+      if (firstPara >= 0) {
+        readerPage = Math.floor(firstPara / READER_PARAS_PER_PAGE);
+        renderReaderPage();
+      }
+    };
+    chSide.appendChild(div);
+  });
+}
+
+function applyReaderSelection() {
+  const startRp = readerParagraphs[readerStartPara];
+  const endRp   = readerParagraphs[readerEndPara];
+  if (!startRp || !endRp) { closeReader(); return; }
+
+  const startCh = startRp.chapterIdx;
+  const endCh   = endRp.chapterIdx;
+
+  bookChapters.forEach((ch, ci) => {
+    if (ci < startCh || ci > endCh) {
+      ch.isContent    = false;
+      ch.trimmedText  = null;
+    } else {
+      ch.isContent = true;
+      // Collect paragraphs for this chapter that fall within the selection
+      const parasInCh = readerParagraphs.filter(p => p.chapterIdx === ci);
+      const startLocal = (ci === startCh)
+        ? parasInCh.findIndex(p => p.globalIdx >= readerStartPara)
+        : 0;
+      let endLocal = parasInCh.length - 1;
+      if (ci === endCh) {
+        for (let li = parasInCh.length - 1; li >= 0; li--) {
+          if (parasInCh[li].globalIdx <= readerEndPara) { endLocal = li; break; }
+        }
+      }
+      const sliced = parasInCh.slice(startLocal < 0 ? 0 : startLocal, endLocal + 1).map(p => p.text).join('\n\n');
+      // Only store trimmedText if we actually trimmed something
+      const fullWords = ch.text.split(/\s+/).length;
+      const slicedWords = sliced.split(/\s+/).length;
+      ch.trimmedText = (slicedWords < fullWords * 0.98) ? sliced : null;
+    }
+  });
+
+  renderChapterList();
+  closeReader();
+
+  const sel   = bookChapters.filter(c => c.isContent);
+  const words = sel.reduce((s, c) => s + (c.trimmedText || c.text).split(/\s+/).length, 0);
+  $('bookInfo').textContent = `Sélection : ${sel.length} chapitres · ~${Math.round(words / 130)} min audio`;
 }
 
 function renderChapterList() {
@@ -3468,7 +3793,7 @@ async function generateBook() {
     ch.status = 'generating'; updateChapterUI(ch.index);
     scrollToChapter(ch.index);
     try {
-      const chunks = splitIntoChunks(ch.text, 4000);
+      const chunks = splitIntoChunks(ch.trimmedText || ch.text, 4000);
       const parts = [];
       for (const chunk of chunks) {
         if (bookCancelled) break;
@@ -3547,7 +3872,7 @@ async function retryChapter(index) {
   bookBusy = true;
   ch.status = 'generating'; updateChapterUI(index);
   try {
-    const chunks = splitIntoChunks(ch.text, 4000);
+    const chunks = splitIntoChunks(ch.trimmedText || ch.text, 4000);
     const parts = [];
     for (const chunk of chunks) {
       const blob = await retryableGenerateChunk(chunk);
