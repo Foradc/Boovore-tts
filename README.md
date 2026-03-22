@@ -1,13 +1,3 @@
----
-title: Boovore — Multi-Engine TTS Studio
-emoji: 🎙
-colorFrom: purple
-colorTo: blue
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # 🎙 Boovore — Multi-Engine TTS Studio
 
 **Boovore** is a self-hosted, GPU-accelerated Text-to-Speech studio with 5 best-in-class engines and a built-in audiobook generator. Run it on any CUDA machine (tested on RTX 3090) via a clean, dark-mode web UI.
