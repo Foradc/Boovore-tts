@@ -1506,6 +1506,7 @@ select option, select optgroup {
       <button class="upload-btn" id="bookCancelBtn" onclick="cancelBook()" style="display:none">⏸ <span id="bookPauseLabel">Pause</span></button>
       <button class="upload-btn" id="bookResumeBtn" onclick="generateBook()" style="display:none">▶ <span id="bookResumeLabel">Reprendre</span></button>
       <label class="auto-dl-label" title="Télécharger chaque chapitre automatiquement"><input type="checkbox" id="autoDlCheck">Auto-DL</label>
+      <label class="auto-dl-label" style="color:var(--accent)" title="Mode expressif : émotions plus marquées, ton varié selon le contenu"><input type="checkbox" id="bookExpressive">🎭 Expressif</label>
       <span class="book-stats" id="bookStats"></span>
     </div>
     <div class="book-progress-row" id="bookProgressRow" style="display:none">
@@ -3543,10 +3544,13 @@ async function mergeAllChapters() {
 }
 
 async function generateChunk(text) {
+  const expressive = $('bookExpressive')?.checked ?? false;
+
   if (bookEngine === 'kokoro') {
     const fd = new FormData();
     fd.append('text', text);
     fd.append('voice', $('bookKokoroVoice').value);
+    fd.append('speed', expressive ? '1.05' : '1.0');
     const res = await fetch('/generate/kokoro_fr', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Kokoro'); }
     return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
@@ -3564,9 +3568,9 @@ async function generateChunk(text) {
     fd.append('latency',        $('bookFishLatency')   ? $('bookFishLatency').value   : 'balanced');
     fd.append('normalize',      $('bookFishNorm')      ? $('bookFishNorm').checked    : true);
     fd.append('auto_split',     $('bookFishAutoSplit') ? $('bookFishAutoSplit').checked : true);
-    fd.append('temperature',    '0.7');
-    fd.append('top_p',          '0.8');
-    fd.append('repetition_penalty', '1.05');
+    fd.append('temperature',    expressive ? '0.88' : '0.7');
+    fd.append('top_p',          expressive ? '0.95' : '0.8');
+    fd.append('repetition_penalty', expressive ? '1.02' : '1.05');
     if (bookSeed !== null) fd.append('seed', bookSeed);   // lock voice across all chapters
     const res = await fetch('/generate/fish', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Fish-Speech'); }
@@ -3577,7 +3581,9 @@ async function generateChunk(text) {
     const fd = new FormData();
     fd.append('text', text);
     if (bookCbRefFile) fd.append('ref_wav', bookCbRefFile);
-    fd.append('exaggeration', $('bookCbExag').value);
+    fd.append('exaggeration', expressive ? '0.75' : $('bookCbExag').value);
+    fd.append('temperature',  expressive ? '1.1'  : '0.8');
+    fd.append('cfg_weight',   expressive ? '0.4'  : '0.5');
     if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate/chatterbox', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Chatterbox'); }
@@ -3590,6 +3596,9 @@ async function generateChunk(text) {
     const fd = new FormData();
     fd.append('text', text);
     if (bookF5RefFile) fd.append('ref_wav', bookF5RefFile);
+    fd.append('speed',              expressive ? '1.05' : '1.0');
+    fd.append('nfe_step',           expressive ? '32'   : '32');
+    fd.append('cross_fade_duration', expressive ? '0.1'  : '0.15');
     if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate/f5_fr', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur F5'); }
@@ -3601,10 +3610,13 @@ async function generateChunk(text) {
     fd.append('text', text);
     fd.append('mode', 'voice_design');
     fd.append('language', $('bookQwenLangVD').value);
-    fd.append('temperature', '0.7');
-    fd.append('top_k', '30');
-    fd.append('repetition_penalty', '1.1');
-    fd.append('instruct', $('bookVoiceInstr').value);
+    fd.append('temperature', expressive ? '0.85' : '0.7');
+    fd.append('top_k', expressive ? '40' : '30');
+    fd.append('repetition_penalty', expressive ? '1.05' : '1.1');
+    const baseInstr = $('bookVoiceInstr').value;
+    fd.append('instruct', expressive
+      ? baseInstr + ' Be emotionally expressive, vary your tone to match dramatic moments, whisper during tense scenes, and add warmth to tender passages.'
+      : baseInstr);
     if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur VoiceDesign'); }
@@ -3620,9 +3632,9 @@ async function generateChunk(text) {
   fd.append('text', text);
   fd.append('mode', isCustom ? 'custom' : 'voice_clone');
   fd.append('language', isCustom ? $('bookQwenLangC').value : $('bookQwenLangK').value);
-  fd.append('temperature', '0.7');
-  fd.append('top_k', '30');
-  fd.append('repetition_penalty', '1.1');
+  fd.append('temperature', expressive ? '0.85' : '0.7');
+  fd.append('top_k', expressive ? '40' : '30');
+  fd.append('repetition_penalty', expressive ? '1.05' : '1.1');
   if (bookSeed !== null) fd.append('seed', bookSeed);
   if (isCustom) {
     fd.append('speaker', $('bookQwenSpeaker').value);
