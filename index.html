@@ -1465,9 +1465,11 @@ select option, select optgroup {
         <input type="range" id="bookCbExag" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('bookCbExagVal').textContent=this.value">
         <span id="bookCbExagVal" style="font-size:11px;color:var(--dim);min-width:24px">0.5</span>
       </div>
-      <div class="bvs-panel" id="bvs-f5" style="display:none">
-        <span style="font-size:11px;color:var(--dim)">Référence (optionnel) :</span>
+      <div class="bvs-panel" id="bvs-f5" style="display:none;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11px;color:var(--dim)">Référence :</span>
         <input type="file" id="bookF5Ref" accept="audio/*" class="bvs-file" onchange="bookF5RefFile=this.files[0]">
+        <span style="font-size:11px;color:var(--dim)">Texte réf :</span>
+        <input type="text" id="bookF5RefText" placeholder="Transcription du clip..." style="font-size:11px;flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:3px 6px">
       </div>
       <div class="bvs-panel" id="bvs-qwen_custom" style="display:none">
         <span style="font-size:11px;color:var(--dim)">Voix :</span>
@@ -3600,15 +3602,15 @@ async function generateChunk(rawText) {
     if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate/chatterbox', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Chatterbox'); }
-    const d = await res.json();
-    const bytes = Uint8Array.from(atob(d.audio_b64), c => c.charCodeAt(0));
-    return new Blob([bytes], { type: 'audio/wav' });
+    return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
   }
 
   if (bookEngine === 'f5') {
     const fd = new FormData();
     fd.append('text', text);
     if (bookF5RefFile) fd.append('ref_wav', bookF5RefFile);
+    const f5RefText = $('bookF5RefText')?.value.trim();
+    if (f5RefText) fd.append('ref_text', f5RefText);
     fd.append('speed',              expressive ? '1.05' : '1.0');
     fd.append('nfe_step',           expressive ? '32'   : '32');
     fd.append('cross_fade_duration', expressive ? '0.1'  : '0.15');
