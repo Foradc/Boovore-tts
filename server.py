@@ -169,9 +169,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 try:
     from faster_qwen3_tts import FasterQwen3TTS
 except ImportError:
-    if _engine_enabled("qwen3"):
-        print("Error: faster_qwen3_tts not found. Install with: pip install faster-qwen3-tts")
-        sys.exit(1)
+    print("Warning: faster_qwen3_tts not found — Qwen3 engine disabled. Install with: pip install faster-qwen3-tts")
     FasterQwen3TTS = None  # type: ignore
 
 try:
@@ -384,8 +382,8 @@ async def get_status():
 
 @app.post("/load")
 async def load_model(model_id: str = Form(...)):
-    if not _engine_enabled("qwen3"):
-        raise HTTPException(status_code=503, detail="Qwen3 engine not enabled on this server.")
+    if not _engine_enabled("qwen3") or FasterQwen3TTS is None:
+        raise HTTPException(status_code=503, detail="Qwen3 engine not available. Install faster-qwen3-tts and use a GPU server.")
     global _active_model_name, _loading
     if model_id in _model_cache:
         _active_model_name = model_id
@@ -430,8 +428,8 @@ async def generate_stream(
     ref_audio: UploadFile = File(None),
     seed: int = Form(None),
 ):
-    if not _engine_enabled("qwen3"):
-        raise HTTPException(status_code=503, detail="Qwen3 engine not enabled on this server.")
+    if not _engine_enabled("qwen3") or FasterQwen3TTS is None:
+        raise HTTPException(status_code=503, detail="Qwen3 engine not available. Install faster-qwen3-tts and use a GPU server.")
     if not _active_model_name or _active_model_name not in _model_cache:
         raise HTTPException(status_code=400, detail="Modèle non chargé. Cliquez sur 'Load' d'abord.")
     if len(text) > MAX_TEXT_CHARS:
@@ -590,8 +588,8 @@ async def generate_non_streaming(
     ref_audio: UploadFile = File(None),
     seed: int = Form(None),
 ):
-    if not _engine_enabled("qwen3"):
-        raise HTTPException(status_code=503, detail="Qwen3 engine not enabled on this server.")
+    if not _engine_enabled("qwen3") or FasterQwen3TTS is None:
+        raise HTTPException(status_code=503, detail="Qwen3 engine not available. Install faster-qwen3-tts and use a GPU server.")
     if not _active_model_name or _active_model_name not in _model_cache:
         raise HTTPException(status_code=400, detail="Modèle non chargé.")
     if len(text) > MAX_TEXT_CHARS:
