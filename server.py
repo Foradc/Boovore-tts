@@ -735,17 +735,24 @@ async def generate_f5_fr(
             ref_path = tmp.name
             cleanup_ref = True
     else:
-        # Try local narrator ref, then bundled F5-TTS English ref as fallback
+        # Try local narrator ref, then bundled F5-TTS ref (check all Python versions)
+        import glob as _glob
+        bundled_candidates = _glob.glob(
+            "/usr/local/lib/python3*/dist-packages/f5_tts/infer/examples/basic/basic_ref_en.wav"
+        )
         for candidate in [
             Path(__file__).parent / "narrator_ref.wav",
-            Path("/usr/local/lib/python3.12/dist-packages/f5_tts/infer/examples/basic/basic_ref_en.wav"),
-        ]:
+        ] + [Path(p) for p in sorted(bundled_candidates, reverse=True)]:
             if candidate.exists():
                 ref_path = str(candidate)
-                # Use bundled ref text if it matches the bundled audio
                 if "basic_ref_en" in ref_path and not ref_text:
                     ref_text = "Some call me nature, others call me mother nature."
                 break
+        if ref_path is None:
+            raise HTTPException(
+                status_code=400,
+                detail="F5-TTS nécessite un fichier audio de référence. Veuillez en uploader un via 'Réf audio'."
+            )
 
     def _run():
         model = _get_f5()
