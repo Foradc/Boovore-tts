@@ -754,6 +754,25 @@ async def generate_chatterbox(
             os.unlink(ref_path)
 
 
+def _fish_split_text(text: str, max_words: int = 200) -> list[str]:
+    """Split long text into paragraph groups to avoid truncation and improve quality."""
+    paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+    if len(paragraphs) <= 1:
+        return [text]
+    chunks, current, current_words = [], [], 0
+    for p in paragraphs:
+        words = len(p.split())
+        if current_words + words > max_words and current:
+            chunks.append("\n\n".join(current))
+            current, current_words = [p], words
+        else:
+            current.append(p)
+            current_words += words
+    if current:
+        chunks.append("\n\n".join(current))
+    return chunks if len(chunks) > 1 else [text]
+
+
 @app.post("/generate/fish")
 async def generate_fish(
     text: str = Form(...),
@@ -767,6 +786,7 @@ async def generate_fish(
     latency: str = Form("normal"),
     normalize: bool = Form(True),
     seed: int = Form(None),
+    auto_split: bool = Form(False),
 ):
     ref_path = None
     cleanup_ref = False
@@ -781,37 +801,47 @@ async def generate_fish(
         sys.path.insert(0, str(FISH_SPEECH_REPO))
         from fish_speech.utils.schema import ServeTTSRequest, ServeReferenceAudio
         engine = _get_fish_engine()
+
+        # Build references once — reused across all text splits
         references = []
+        ref_audio_bytes = None
         if ref_path:
             with open(ref_path, "rb") as f:
                 ref_audio_bytes = f.read()
             references = [ServeReferenceAudio(audio=ref_audio_bytes, text=ref_text or "")]
-        req = ServeTTSRequest(
-            text=text,
+
+        # Optionally split long text at paragraph boundaries
+        texts = _fish_split_text(text) if auto_split and len(text) > 600 else [text]
+
+        common = dict(
             references=references,
             temperature=max(0.1, min(1.0, temperature)),
             top_p=max(0.1, min(1.0, top_p)),
             repetition_penalty=max(0.9, min(2.0, repetition_penalty)),
-            max_new_tokens=max(64, min(4096, max_new_tokens)),
-            chunk_length=max(100, min(1000, chunk_length)),
+            max_new_tokens=max(64, min(8192, max_new_tokens)),
+            chunk_length=max(100, min(600, chunk_length)),
             latency=latency if latency in ("normal", "balanced") else "normal",
             normalize=normalize,
             seed=seed,
             format="wav",
             streaming=False,
         )
-        audio_chunks = []
+
+        all_audio = []
         sample_rate = 44100
-        for result in engine.inference(req):
-            if result.code == "header":
-                if isinstance(result.audio, tuple):
-                    sample_rate = result.audio[0]
-            elif result.code in ("segment", "final"):
-                if isinstance(result.audio, tuple):
-                    audio_chunks.append(result.audio[1])
-        if not audio_chunks:
+        for txt in texts:
+            req = ServeTTSRequest(text=txt, **common)
+            for result in engine.inference(req):
+                if result.code == "header":
+                    if isinstance(result.audio, tuple):
+                        sample_rate = result.audio[0]
+                elif result.code in ("segment", "final"):
+                    if isinstance(result.audio, tuple):
+                        all_audio.append(result.audio[1])
+
+        if not all_audio:
             raise ValueError("Fish-Speech: no audio generated")
-        combined = np.concatenate(audio_chunks)
+        combined = np.concatenate(all_audio)
         buf = io.BytesIO()
         sf.write(buf, combined, sample_rate, format="WAV")
         buf.seek(0)

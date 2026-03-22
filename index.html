@@ -1338,11 +1338,37 @@ select option, select optgroup {
           <span style="font-size:10px;color:var(--dimmer)">← même valeur = même voix à chaque fois</span>
         </div>
       </div>
-      <div class="bvs-panel" id="bvs-fish" style="display:none">
-        <span style="font-size:11px;color:var(--dim)">Référence :</span>
-        <input type="file" id="bookFishRef" accept="audio/*" class="bvs-file" onchange="bookFishRefFile=this.files[0]">
-        <span style="font-size:11px;color:var(--dim)">Texte réf :</span>
-        <input type="text" id="bookFishRefText" placeholder="Transcription..." style="font-size:11px;flex:3;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:3px 6px;max-width:220px">
+      <div class="bvs-panel" id="bvs-fish" style="display:none;flex-direction:column;gap:6px">
+        <!-- Ref audio -->
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--dim)">Référence :</span>
+          <input type="file" id="bookFishRef" accept="audio/*" class="bvs-file" onchange="bookFishRefFile=this.files[0]">
+          <span style="font-size:11px;color:var(--dim)">Texte réf :</span>
+          <input type="text" id="bookFishRefText" placeholder="Transcription..." style="font-size:11px;flex:3;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:3px 6px;max-width:200px">
+        </div>
+        <!-- Audiobook-optimized params -->
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:5px;border-top:1px solid var(--border)">
+          <span style="font-size:10px;color:var(--accent);font-weight:700;letter-spacing:.5px">📖 AUDIOBOOK</span>
+          <label style="font-size:11px;color:var(--dim)" title="Tokens max — augmenter pour longs chapitres">Max tok</label>
+          <input type="number" id="bookFishMaxTokens" value="4096" min="512" max="8192" step="512"
+            style="width:68px;font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px;font-family:monospace">
+          <label style="font-size:11px;color:var(--dim)" title="Chunk interne — 400+ réduit l'overhead entre segments">Chunk</label>
+          <input type="range" id="bookFishChunk" min="100" max="600" step="50" value="400" style="width:56px"
+            oninput="$('bookFishChunkV').textContent=this.value">
+          <span id="bookFishChunkV" style="font-size:11px;color:var(--dim);min-width:28px">400</span>
+          <label style="font-size:11px;color:var(--dim)">Latence</label>
+          <select id="bookFishLatency" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px">
+            <option value="balanced" selected>Balanced</option>
+            <option value="normal">Normal</option>
+          </select>
+          <label style="font-size:11px;color:var(--dim);display:flex;align-items:center;gap:3px;cursor:pointer">
+            <input type="checkbox" id="bookFishNorm" checked style="accent-color:var(--accent)"> Normalize
+          </label>
+          <label style="font-size:11px;color:var(--accent);display:flex;align-items:center;gap:3px;cursor:pointer"
+            title="Découpe les longs chapitres en paragraphes pour éviter les truncations">
+            <input type="checkbox" id="bookFishAutoSplit" checked style="accent-color:var(--accent)"> Auto-split
+          </label>
+        </div>
       </div>
       <div class="bvs-panel" id="bvs-chatterbox" style="display:none">
         <span style="font-size:11px;color:var(--dim)">Référence :</span>
@@ -1528,6 +1554,7 @@ let refFile  = null;
 let presetRefId = null;
 let presetRefs = [];
 let loadedModel  = null;
+let _statusInitDone = false; // guard: only reset UI to Kokoro on first fetchStatus
 let loadingModel = null;
 let dlBlob   = null;
 let lastRtf  = 3.5; // 1.7B-Base ≈ 3.5× RTF, updated after first generation
@@ -1831,10 +1858,12 @@ async function fetchStatus() {
       if ($('grpLabel2')) $('grpLabel2').textContent = appLang === 'en' ? 'Qwen3-TTS · requires loading' : 'Qwen3-TTS · nécessite chargement';
       if ($('loadBtnVis')) $('loadBtnVis').textContent = 'Load';
     }
-    // Update visible load button state (already handled above)
-    // Default to FR tab and apply French preset
-    switchInnerTab('fr');
-    selectStudioEngine('kokoro');
+    // Only reset to Kokoro on the very first load — never during polls or reloads
+    if (!_statusInitDone) {
+      _statusInitDone = true;
+      switchInnerTab('fr');
+      selectStudioEngine('kokoro');
+    }
   } catch { setPill('off', 'offline'); }
 }
 
@@ -3386,8 +3415,17 @@ async function generateChunk(text) {
     const fd = new FormData();
     fd.append('text', text);
     if (bookFishRefFile) fd.append('ref_wav', bookFishRefFile);
-    const fishRefText = $('bookFishRefText').value.trim();
+    const fishRefText = $('bookFishRefText') ? $('bookFishRefText').value.trim() : '';
     if (fishRefText) fd.append('ref_text', fishRefText);
+    // Audiobook-optimized parameters
+    fd.append('max_new_tokens', $('bookFishMaxTokens') ? $('bookFishMaxTokens').value : '4096');
+    fd.append('chunk_length',   $('bookFishChunk')     ? $('bookFishChunk').value     : '400');
+    fd.append('latency',        $('bookFishLatency')   ? $('bookFishLatency').value   : 'balanced');
+    fd.append('normalize',      $('bookFishNorm')      ? $('bookFishNorm').checked    : true);
+    fd.append('auto_split',     $('bookFishAutoSplit') ? $('bookFishAutoSplit').checked : true);
+    fd.append('temperature',    '0.7');   // lower = more consistent voice across chapters
+    fd.append('top_p',          '0.8');
+    fd.append('repetition_penalty', '1.05');  // slight reduction for natural narration
     const res = await fetch('/generate/fish', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Fish-Speech'); }
     return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
