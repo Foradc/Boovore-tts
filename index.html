@@ -1408,10 +1408,29 @@ select option, select optgroup {
         </div>
       </div>
       <div class="bvs-panel" id="bvs-fish" style="display:none;flex-direction:column;gap:6px">
-        <!-- Ref audio -->
+        <!-- Preset voices -->
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--dim);flex-shrink:0">Voix :</span>
+          <select id="bookFishVoicePreset" class="bvs-select" style="max-width:220px" onchange="applyFishPreset(this.value)">
+            <option value="">— Référence audio personnalisée —</option>
+            <optgroup label="Narrateurs">
+              <option value="42">Narrateur A · voix grave</option>
+              <option value="1337">Narrateur B · voix posée</option>
+              <option value="8192">Narrateur C · voix jeune</option>
+              <option value="31415">Narrateur D · voix neutre</option>
+            </optgroup>
+            <optgroup label="Narratrices">
+              <option value="512">Narratrice A · voix claire</option>
+              <option value="777">Narratrice B · voix douce</option>
+              <option value="2048">Narratrice C · voix chaleureuse</option>
+              <option value="9999">Narratrice D · voix posée</option>
+            </optgroup>
+          </select>
+        </div>
+        <!-- Ref audio (custom) -->
+        <div id="bookFishRefRow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <span style="font-size:11px;color:var(--dim)">Référence :</span>
-          <input type="file" id="bookFishRef" accept="audio/*" class="bvs-file" onchange="bookFishRefFile=this.files[0]">
+          <input type="file" id="bookFishRef" accept="audio/*" class="bvs-file" onchange="bookFishRefFile=this.files[0];$('bookFishVoicePreset').value=''">
           <span style="font-size:11px;color:var(--dim)">Texte réf :</span>
           <input type="text" id="bookFishRefText" placeholder="Transcription..." style="font-size:11px;flex:3;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:3px 6px;max-width:200px">
         </div>
@@ -2946,6 +2965,15 @@ function switchTab(tab) {
   $('panelBook').style.display = tab === 'book' ? '' : 'none';
 }
 
+function applyFishPreset(seed) {
+  if (seed) {
+    bookSeed = parseInt(seed);
+    bookFishRefFile = null;
+    const inp = document.getElementById('bookFishRef');
+    if (inp) inp.value = '';
+  }
+}
+
 function switchBookEngine(engine) {
   bookEngine = engine;
   const engines = ['kokoro', 'qwen_design', 'fish', 'chatterbox', 'f5', 'qwen_custom', 'qwen_clone'];
@@ -3170,7 +3198,12 @@ async function extractEpubText(file) {
 
     const body = doc.body?.textContent || '';
     const text = body.replace(/\s{3,}/g, '\n\n').trim();
-    if (text.length > 100) chapters.push({ title, text });
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    // Skip very short pages (cover, TOC, copyright, colophon) and known non-content
+    const titleLow = title.toLowerCase();
+    const isNonContent = wordCount < 80 ||
+      /^(table|copyright|droits?|couverture?|cover|colophon|about|à propos|remerciements?|acknowledgment|dedication|dédicace|sommaire|contents?)/.test(titleLow);
+    if (!isNonContent) chapters.push({ title, text });
   }
   return chapters; // structured array
 }
@@ -3531,9 +3564,10 @@ async function generateChunk(text) {
     fd.append('latency',        $('bookFishLatency')   ? $('bookFishLatency').value   : 'balanced');
     fd.append('normalize',      $('bookFishNorm')      ? $('bookFishNorm').checked    : true);
     fd.append('auto_split',     $('bookFishAutoSplit') ? $('bookFishAutoSplit').checked : true);
-    fd.append('temperature',    '0.7');   // lower = more consistent voice across chapters
+    fd.append('temperature',    '0.7');
     fd.append('top_p',          '0.8');
-    fd.append('repetition_penalty', '1.05');  // slight reduction for natural narration
+    fd.append('repetition_penalty', '1.05');
+    if (bookSeed !== null) fd.append('seed', bookSeed);   // lock voice across all chapters
     const res = await fetch('/generate/fish', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Fish-Speech'); }
     return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
@@ -3542,8 +3576,9 @@ async function generateChunk(text) {
   if (bookEngine === 'chatterbox') {
     const fd = new FormData();
     fd.append('text', text);
-    if (bookCbRefFile) fd.append('ref_audio', bookCbRefFile);
+    if (bookCbRefFile) fd.append('ref_wav', bookCbRefFile);
     fd.append('exaggeration', $('bookCbExag').value);
+    if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate/chatterbox', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Chatterbox'); }
     const d = await res.json();
@@ -3554,7 +3589,8 @@ async function generateChunk(text) {
   if (bookEngine === 'f5') {
     const fd = new FormData();
     fd.append('text', text);
-    if (bookF5RefFile) fd.append('ref_audio', bookF5RefFile);
+    if (bookF5RefFile) fd.append('ref_wav', bookF5RefFile);
+    if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate/f5_fr', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur F5'); }
     return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
