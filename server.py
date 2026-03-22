@@ -22,6 +22,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import soundfile as sf
@@ -427,7 +428,7 @@ async def generate_stream(
     repetition_penalty: float = Form(1.1),
     ref_preset: str = Form(""),
     ref_audio: UploadFile = File(None),
-    seed: int = Form(None),
+    seed: Optional[int] = Form(None),
 ):
     if not _engine_enabled("qwen3") or FasterQwen3TTS is None:
         raise HTTPException(status_code=503, detail="Qwen3 engine not available. Install faster-qwen3-tts and use a GPU server.")
@@ -587,7 +588,7 @@ async def generate_non_streaming(
     repetition_penalty: float = Form(1.1),
     ref_preset: str = Form(""),
     ref_audio: UploadFile = File(None),
-    seed: int = Form(None),
+    seed: Optional[int] = Form(None),
 ):
     if not _engine_enabled("qwen3") or FasterQwen3TTS is None:
         raise HTTPException(status_code=503, detail="Qwen3 engine not available. Install faster-qwen3-tts and use a GPU server.")
@@ -721,7 +722,7 @@ async def generate_f5_fr(
     speed: float = Form(1.0),
     nfe_step: int = Form(32),
     cross_fade_duration: float = Form(0.15),
-    seed: int = Form(None),
+    seed: Optional[int] = Form(None),
 ):
     if not _engine_enabled("f5"):
         raise HTTPException(status_code=503, detail="F5-TTS engine not enabled on this server.")
@@ -763,10 +764,12 @@ async def generate_f5_fr(
                 nfe_step=max(8, min(64, nfe_step)),
                 cross_fade_duration=max(0.0, min(0.5, cross_fade_duration)),
             )
-            return open(out_path, "rb").read()
+            with open(out_path, "rb") as f:
+                return f.read()
         finally:
-            os.unlink(out_path)
-            if cleanup_ref and ref_path:
+            if os.path.exists(out_path):
+                os.unlink(out_path)
+            if cleanup_ref and ref_path and os.path.exists(ref_path):
                 os.unlink(ref_path)
 
     try:
@@ -783,7 +786,7 @@ async def generate_chatterbox(
     exaggeration: float = Form(0.5),
     cfg_weight: float = Form(0.5),
     temperature: float = Form(0.8),
-    seed: int = Form(None),
+    seed: Optional[int] = Form(None),
 ):
     if not _engine_enabled("chatterbox"):
         raise HTTPException(status_code=503, detail="Chatterbox engine not enabled on this server.")
@@ -812,9 +815,11 @@ async def generate_chatterbox(
             out_path = out_tmp.name
         try:
             torchaudio.save(out_path, wav, model.sr)
-            return open(out_path, "rb").read()
+            with open(out_path, "rb") as f:
+                return f.read()
         finally:
-            os.unlink(out_path)
+            if os.path.exists(out_path):
+                os.unlink(out_path)
 
     try:
         wav_bytes = await asyncio.get_event_loop().run_in_executor(None, _run)
@@ -858,7 +863,7 @@ async def generate_fish(
     chunk_length: int = Form(200),
     latency: str = Form("normal"),
     normalize: bool = Form(True),
-    seed: int = Form(None),
+    seed: Optional[int] = Form(None),
     auto_split: bool = Form(False),
     rolling_ref_secs: float = Form(6.0),  # seconds to extract from tail of output for next ref
 ):
