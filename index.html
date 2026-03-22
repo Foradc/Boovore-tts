@@ -1115,6 +1115,11 @@ select option, select optgroup {
           <option value="Spanish">Spanish 🇪🇸</option>
           <option value="Portuguese">Portuguese 🇵🇹</option>
           <option value="Russian">Russian 🇷🇺</option>
+          <option value="Italian">Italian 🇮🇹</option>
+          <option value="Portuguese">Portuguese 🇵🇹</option>
+          <option value="Dutch">Dutch 🇳🇱</option>
+          <option value="Arabic">Arabic 🇸🇦</option>
+          <option value="Hindi">Hindi 🇮🇳</option>
         </select>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
@@ -1128,7 +1133,7 @@ select option, select optgroup {
 
     <!-- Clone -->
     <div class="mode-row" id="rowClone" onclick="onModeRowClick('voice_clone')">
-      <div class="label">Clone — match a voice from a reference clip<span class="switch-tag">LOAD ▶</span></div>
+      <div class="label">Clone — match a voice from a reference clip<span class="switch-tag" id="qwenCloneTag">LOAD ▶</span></div>
       <!-- Simple / Advanced toggle -->
       <div class="clone-toggle-row">
         <div class="toggle">
@@ -1170,7 +1175,7 @@ select option, select optgroup {
 
     <!-- Custom (built-in speakers) -->
     <div class="mode-row" id="rowChar" onclick="onModeRowClick('custom')">
-      <div class="label">Custom — use a built-in speaker<span class="switch-tag">LOAD ▶</span></div>
+      <div class="label">Custom — use a built-in speaker<span class="switch-tag" id="qwenCustomTag">LOAD ▶</span></div>
       <div class="row">
         <select class="sm-sel" id="speakerId" style="flex:1">
           <option value="">Select speaker...</option>
@@ -1188,7 +1193,27 @@ select option, select optgroup {
 
     <!-- Voice Design -->
     <div class="mode-row" id="rowCustom" onclick="onModeRowClick('voice_design')">
-      <div class="label">Voice Design — describe any voice<span class="switch-tag">LOAD ▶</span></div>
+      <div class="label">Voice Design — describe any voice<span class="switch-tag" id="qwenVdTag">LOAD ▶</span></div>
+      <div class="row" style="gap:6px">
+        <select id="qwenDesignPreset" onclick="event.stopPropagation()" onchange="applyDesignPreset(this.value)"
+          style="flex:1;font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;max-width:220px">
+          <option value="">— Preset voix —</option>
+          <option value="narrator_warm">🎙 Narrateur chaleureux</option>
+          <option value="narrator_epic">🎭 Narrateur épique</option>
+          <option value="narrator_audiobook">📖 Narrateur audiobook</option>
+          <option value="female_warm">👩 Femme chaleureuse</option>
+          <option value="female_clear">📢 Femme claire &amp; nette</option>
+          <option value="female_young">✨ Femme jeune &amp; dynamique</option>
+          <option value="male_deep">🎤 Masculin grave</option>
+          <option value="male_warm">🎵 Masculin chaleureux</option>
+          <option value="assistant">🤖 Assistant IA</option>
+          <option value="dramatic">🎬 Dramatique</option>
+          <option value="asmr">😴 Doux / ASMR</option>
+          <option value="child">🧒 Enfant espiègle</option>
+          <option value="news">📺 Présentateur news</option>
+          <option value="elder">👴 Voix sénior</option>
+        </select>
+      </div>
       <div class="row">
         <textarea class="voice-in" id="voiceInstr" rows="1"
           placeholder="e.g. warm, calm female narrator…"
@@ -1408,8 +1433,11 @@ select option, select optgroup {
     <div class="s-row">
       <label>Language</label>
       <select id="langSel">
-        <option>English</option><option>Chinese</option><option>French</option>
-        <option>German</option><option>Spanish</option><option>Auto</option>
+        <option>French</option><option>English</option><option>Chinese</option>
+        <option>Japanese</option><option>Korean</option><option>German</option>
+        <option>Spanish</option><option>Italian</option><option>Portuguese</option>
+        <option>Russian</option><option>Dutch</option><option>Arabic</option>
+        <option>Hindi</option><option>Auto</option>
       </select>
     </div>
     <div class="s-row">
@@ -1575,6 +1603,31 @@ function applyTheme(t) {
   $('themeIcon').innerHTML = t === 'dark'
     ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
     : '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+}
+
+// ── Voice Design Presets ───────────────────────────────────────────────────────
+const DESIGN_PRESETS = {
+  narrator_warm:     "A warm, resonant male narrator with clear diction, calm and measured pacing, and an engaging storytelling voice. Rich, trustworthy, and professional.",
+  narrator_epic:     "An epic, commanding male narrator with a deep resonant voice, dramatic pacing, powerful delivery, and cinematic gravitas. Perfect for trailers and epic stories.",
+  narrator_audiobook:"A clear, pleasant audiobook narrator with natural conversational flow, warm tone, excellent diction, and engaging pacing that keeps listeners captivated.",
+  female_warm:       "A warm, friendly female voice with a natural conversational tone, gentle smile in the voice, clear pronunciation, and an inviting, trustworthy quality.",
+  female_clear:      "A clear, articulate female voice with bright confident tone, crisp professional delivery, and excellent diction. Energetic and authoritative.",
+  female_young:      "A bright, youthful female voice with natural energy, upbeat cheerful delivery, clear pronunciation, and an approachable friendly quality.",
+  male_deep:         "A deep, authoritative baritone male voice with confident measured delivery, natural gravitas, and a commanding presence that conveys expertise.",
+  male_warm:         "A warm, friendly male voice with a natural conversational flow, pleasant mid-range tone, and an approachable, trustworthy quality.",
+  assistant:         "A clear, helpful assistant voice — friendly yet professional, warm but neutral, easy to understand, with natural pacing and approachable tone.",
+  dramatic:          "An expressive, theatrical voice with rich emotional range, intense delivery, dynamic pacing that rises and falls with the narrative, and powerful presence.",
+  asmr:              "A soft, gentle, breathy whisper voice with extremely slow and deliberate pacing, creating a deeply soothing and relaxing sensation.",
+  child:             "A bright, cheerful child's voice with natural enthusiasm, playful energy, innocent expressiveness, and a light, carefree quality.",
+  news:              "A clear, authoritative broadcast journalist voice with measured pacing, confident delivery, professional neutrality, and crisp diction.",
+  elder:             "A wise, warm elder voice with a slightly slower pace, gentle gravitas, and the natural warmth and authenticity of lived experience.",
+};
+function applyDesignPreset(key) {
+  if (!key || !DESIGN_PRESETS[key]) return;
+  $('voiceInstr').value = DESIGN_PRESETS[key];
+  autoGrow($('voiceInstr'));
+  // Reset dropdown label after selection
+  setTimeout(() => { if ($('qwenDesignPreset')) $('qwenDesignPreset').selectedIndex = 0; }, 100);
 }
 
 // ── i18n ──────────────────────────────────────────────────────────────────────
@@ -1758,8 +1811,27 @@ async function fetchStatus() {
     $('rowChatterbox').classList.add('compatible');
     // Sync visible lang selector
     if ($('langSelVis')) $('langSelVis').value = $('langSel').value || 'French';
-    // Update visible load button state
-    if ($('loadBtnVis') && d.loaded) $('loadBtnVis').textContent = '✓ Loaded';
+    // Update Qwen3 row badges dynamically
+    const _qwenTags = ['qwenCloneTag', 'qwenCustomTag', 'qwenVdTag'];
+    if (d.loading) {
+      _qwenTags.forEach(id => { const el = $(id); if (el) el.textContent = '⟳ …'; });
+      if ($('grpLabel2')) $('grpLabel2').textContent = 'Qwen3-TTS · chargement en cours…';
+      if ($('loadBtnVis')) $('loadBtnVis').textContent = '⟳ Chargement…';
+      // Poll again in 3s until loaded
+      setTimeout(fetchStatus, 3000);
+    } else if (d.loaded) {
+      _qwenTags.forEach(id => { const el = $(id); if (el) { el.textContent = '✓ PRÊT'; el.style.background = '#22c55e'; } });
+      const shortName = (d.model || '').split('/').pop().replace('Qwen3-TTS-12Hz-', '').replace('-Base','').replace('-CustomVoice',' Custom').replace('-VoiceDesign',' VD');
+      if ($('grpLabel2')) $('grpLabel2').textContent = `Qwen3-TTS · ${shortName} ✓`;
+      if ($('loadBtnVis')) $('loadBtnVis').textContent = '✓ Loaded';
+      // Mark Qwen rows compatible
+      ['rowClone', 'rowChar', 'rowCustom'].forEach(id => { if ($(id)) $(id).classList.add('compatible'); });
+    } else {
+      _qwenTags.forEach(id => { const el = $(id); if (el) { el.textContent = 'LOAD ▶'; el.style.background = ''; } });
+      if ($('grpLabel2')) $('grpLabel2').textContent = appLang === 'en' ? 'Qwen3-TTS · requires loading' : 'Qwen3-TTS · nécessite chargement';
+      if ($('loadBtnVis')) $('loadBtnVis').textContent = 'Load';
+    }
+    // Update visible load button state (already handled above)
     // Default to FR tab and apply French preset
     switchInnerTab('fr');
     selectStudioEngine('kokoro');
