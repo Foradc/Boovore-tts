@@ -14,6 +14,8 @@ pinned: false
 
 > **Name**: Boovore = *Book* + *Devour* — built to devour books in audio.
 
+![Boovore UI](screenshot.png)
+
 ---
 
 ## ✨ Engines
