@@ -60,11 +60,12 @@ def _get_fish_engine():
         import torch as _torch
         device = "cuda" if _torch.cuda.is_available() else "cpu"
         precision = _torch.bfloat16
+        use_compile = device == "cuda"  # torch.compile only on GPU
         llama_queue = launch_thread_safe_queue(
             checkpoint_path=str(FISH_SPEECH_MODEL),
             device=device,
             precision=precision,
-            compile=False,
+            compile=use_compile,
         )
         decoder_model = load_decoder_model(
             config_name="firefly_gan_vq",
@@ -75,7 +76,7 @@ def _get_fish_engine():
             llama_queue=llama_queue,
             decoder_model=decoder_model,
             precision=precision,
-            compile=False,
+            compile=use_compile,
         )
         return _fish_engine
 
