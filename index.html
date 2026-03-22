@@ -557,6 +557,11 @@ body {
   cursor: pointer;
 }
 .s-row select option { background: var(--surface); }
+/* Force dark background on ALL native select dropdowns */
+select option, select optgroup {
+  background-color: #1e1e2e;
+  color: #e2e8f0;
+}
 .s-row textarea { resize: vertical; min-height: 40px; max-height: 80px; }
 
 /* Settings hint text */
@@ -902,6 +907,7 @@ body {
     <button class="ibtn" onclick="openSettings()" title="Paramètres Qwen3">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     </button>
+    <button class="ibtn" id="langBtn" onclick="toggleLang()" title="Switch language / Changer la langue" style="font-size:11px;font-weight:700;letter-spacing:0.5px;padding:0 8px;min-width:36px">🌐 EN</button>
     <button class="ibtn" id="themeBtn" onclick="toggleTheme()" title="Thème">
       <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
@@ -915,7 +921,7 @@ body {
     </button>
     <button class="tab" data-tab="book" onclick="switchTab('book')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
-      Livre Audio
+      <span id="tabBookLabel">Livre Audio</span>
     </button>
   </div>
 
@@ -930,7 +936,7 @@ body {
     <!-- Engine pill selector -->
     <div class="engine-section" id="engineSection">
       <div class="engine-group">
-        <div class="engine-group-label">Instantané · prêt à l'emploi</div>
+        <div class="engine-group-label" id="grpLabel1">Instantané · prêt à l'emploi</div>
         <div class="engine-pills-row">
           <button class="epill active" id="pill-kokoro" style="--ep-color:#22c55e" onclick="selectStudioEngine('kokoro')">
             <span class="ep-dot" style="background:#22c55e"></span>
@@ -956,7 +962,7 @@ body {
       </div>
       <div class="engine-divider"></div>
       <div class="engine-group">
-        <div class="engine-group-label">Qwen3-TTS · nécessite chargement</div>
+        <div class="engine-group-label" id="grpLabel2">Qwen3-TTS · nécessite chargement</div>
         <div class="engine-pills-row">
           <button class="epill" id="pill-clone" style="--ep-color:#8b5cf6" onclick="selectStudioEngine('clone')">
             <span class="ep-dot" style="background:#8b5cf6"></span>
@@ -983,9 +989,9 @@ body {
     <div id="innerPanelFR">
     <!-- Kokoro FR -->
     <div class="mode-row" id="rowKokoro">
-      <div class="label">Kokoro FR — voix françaises natives<span class="switch-tag" style="background:var(--accent);color:#fff">FAST</span></div>
+      <div class="label"><span id="engLblKokoro">Kokoro FR — voix françaises natives</span><span class="switch-tag" style="background:var(--accent);color:#fff">FAST</span></div>
       <div class="row">
-        <select id="kokoroVoice" style="background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;flex:1;max-width:240px">
+        <select id="kokoroVoice" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;flex:1;max-width:240px">
           <optgroup label="🇫🇷 Français">
             <option value="ff_siwis">Siwis — FR Femme ★</option>
           </optgroup>
@@ -1010,6 +1016,9 @@ body {
             <option value="bm_lewis">Lewis</option>
           </optgroup>
         </select>
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Vitesse</label>
+        <input type="range" id="kokoroSpeed" min="0.5" max="2.0" step="0.05" value="1.0" style="width:64px" oninput="$('kokoroSpeedV').textContent=parseFloat(this.value).toFixed(2)">
+        <span id="kokoroSpeedV" style="font-size:11px;color:var(--dim);min-width:32px">1.00</span>
         <button class="play-btn" onclick="generateKokoro()" title="Générer">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
@@ -1017,13 +1026,16 @@ body {
     </div>
     <!-- Chatterbox -->
     <div class="mode-row" id="rowChatterbox">
-      <div class="label">Chatterbox — clonage zero-shot (ResembleAI)<span class="switch-tag" style="background:#059669;color:#fff">BEST</span></div>
+      <div class="label"><span id="engLblChatterbox">Chatterbox — clonage zero-shot (ResembleAI)</span><span class="switch-tag" style="background:#059669;color:#fff">BEST</span></div>
       <div class="row">
         <label style="font-size:11px;color:var(--dim)">Réf :</label>
         <input type="file" id="cbRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;max-width:180px">
-        <label style="font-size:11px;color:var(--dim)">Exag</label>
-        <input type="range" id="cbExag" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('cbExagVal').textContent=this.value">
-        <span id="cbExagVal" style="font-size:11px;color:var(--dim);min-width:24px">0.5</span>
+        <label style="font-size:11px;color:var(--dim)" title="Intensité émotionnelle de la voix">Exag</label>
+        <input type="range" id="cbExag" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('cbExagVal').textContent=parseFloat(this.value).toFixed(2)">
+        <span id="cbExagVal" style="font-size:11px;color:var(--dim);min-width:32px">0.50</span>
+        <label style="font-size:11px;color:var(--dim)" title="Guidance du modèle — 0=libre, 1=strict">CFG</label>
+        <input type="range" id="cbCfg" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('cbCfgVal').textContent=parseFloat(this.value).toFixed(2)">
+        <span id="cbCfgVal" style="font-size:11px;color:var(--dim);min-width:32px">0.50</span>
         <button class="play-btn" onclick="generateChatterbox()" title="Générer">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
@@ -1031,10 +1043,12 @@ body {
     </div>
     <!-- F5-TTS FR -->
     <div class="mode-row" id="rowF5">
-      <div class="label">F5-TTS FR — clonage vocal français<span class="switch-tag" style="background:#7c3aed;color:#fff">CLONE</span></div>
-      <div class="row">
-        <label style="font-size:11px;color:var(--dim);flex:1">Référence audio (optionnel) :</label>
-        <input type="file" id="f5RefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;max-width:200px">
+      <div class="label"><span id="engLblF5">F5-TTS FR — clonage vocal français</span><span class="switch-tag" style="background:#7c3aed;color:#fff">CLONE</span></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Réf audio :</label>
+        <input type="file" id="f5RefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:120px;max-width:180px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Texte réf :</label>
+        <input type="text" id="f5RefText" placeholder="Transcription du clip audio..." style="font-size:11px;flex:3;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:4px 6px">
         <button class="play-btn" onclick="generateF5()" title="Générer">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
@@ -1042,7 +1056,7 @@ body {
     </div>
     <!-- Fish-Speech -->
     <div class="mode-row" id="rowFish">
-      <div class="label">Fish-Speech 1.5 — voice cloning multilingue<span class="switch-tag" style="background:#0ea5e9;color:#fff">NEW</span></div>
+      <div class="label"><span id="engLblFish">Fish-Speech 1.5 — clonage vocal multilingue</span><span class="switch-tag" style="background:#0ea5e9;color:#fff">NEW</span></div>
       <div class="row" style="flex-wrap:wrap;gap:6px">
         <label style="font-size:11px;color:var(--dim);flex-shrink:0">Réf audio :</label>
         <input type="file" id="fishRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:120px;max-width:180px">
@@ -1190,7 +1204,7 @@ body {
     <div class="studio-gen-row" id="studioGenRow">
       <button class="gen-btn" id="genBtn" onclick="generateCurrent()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/></svg>
-        Générer
+        <span id="genBtnLabel">Générer</span>
       </button>
     </div>
 
@@ -1348,10 +1362,10 @@ body {
     <div class="book-gen-row" id="bookGenRow" style="display:none">
       <button class="gen-btn" id="bookGenBtn" onclick="generateBook()" style="flex:1;padding:10px;font-size:13px">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/></svg>
-        Générer la sélection
+        <span id="bookGenBtnLabel">Générer la sélection</span>
       </button>
-      <button class="upload-btn" id="bookCancelBtn" onclick="cancelBook()" style="display:none">⏸ Pause</button>
-      <button class="upload-btn" id="bookResumeBtn" onclick="generateBook()" style="display:none">▶ Reprendre</button>
+      <button class="upload-btn" id="bookCancelBtn" onclick="cancelBook()" style="display:none">⏸ <span id="bookPauseLabel">Pause</span></button>
+      <button class="upload-btn" id="bookResumeBtn" onclick="generateBook()" style="display:none">▶ <span id="bookResumeLabel">Reprendre</span></button>
       <label class="auto-dl-label" title="Télécharger chaque chapitre automatiquement"><input type="checkbox" id="autoDlCheck">Auto-DL</label>
       <span class="book-stats" id="bookStats"></span>
     </div>
@@ -1528,6 +1542,7 @@ const REC_SR = 24000;
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   initTheme();
+  setLang(appLang);
   autoGrow($('voiceInstr'));
   updateEstimation();
   selectStudioEngine('kokoro');
@@ -1560,6 +1575,68 @@ function applyTheme(t) {
   $('themeIcon').innerHTML = t === 'dark'
     ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
     : '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+}
+
+// ── i18n ──────────────────────────────────────────────────────────────────────
+const I18N = {
+  fr: {
+    tabBook: 'Livre Audio',
+    grp1: 'Instantané · prêt à l\'emploi',
+    grp2: 'Qwen3-TTS · nécessite chargement',
+    engKokoro: 'Kokoro FR — voix françaises natives',
+    engChatterbox: 'Chatterbox — clonage zero-shot (ResembleAI)',
+    engF5: 'F5-TTS FR — clonage vocal français',
+    engFish: 'Fish-Speech 1.5 — clonage vocal multilingue',
+    genBtn: 'Générer',
+    bookGenBtn: 'Générer la sélection',
+    bookPause: 'Pause',
+    bookResume: 'Reprendre',
+    textPh: 'Entrez votre texte ici...',
+    langBtn: '🌐 EN',
+  },
+  en: {
+    tabBook: 'Audiobook',
+    grp1: 'Instant · ready to use',
+    grp2: 'Qwen3-TTS · requires loading',
+    engKokoro: 'Kokoro FR — native French voices',
+    engChatterbox: 'Chatterbox — zero-shot cloning (ResembleAI)',
+    engF5: 'F5-TTS FR — French voice cloning',
+    engFish: 'Fish-Speech 1.5 — multilingual voice cloning',
+    genBtn: 'Generate',
+    bookGenBtn: 'Generate selection',
+    bookPause: 'Pause',
+    bookResume: 'Resume',
+    textPh: 'Enter your text here...',
+    langBtn: '🌐 FR',
+  }
+};
+let appLang = localStorage.getItem('bvLang') || 'fr';
+function toggleLang() { setLang(appLang === 'fr' ? 'en' : 'fr'); }
+function setLang(lang) {
+  appLang = lang;
+  localStorage.setItem('bvLang', lang);
+  const t = I18N[lang];
+  // Header
+  $('langBtn').textContent = t.langBtn;
+  // Tabs
+  $('tabBookLabel').textContent = t.tabBook;
+  // Engine group labels
+  $('grpLabel1').textContent = t.grp1;
+  $('grpLabel2').textContent = t.grp2;
+  // Engine row labels
+  $('engLblKokoro').textContent = t.engKokoro;
+  $('engLblChatterbox').textContent = t.engChatterbox;
+  $('engLblF5').textContent = t.engF5;
+  $('engLblFish').textContent = t.engFish;
+  // Buttons
+  $('genBtnLabel').textContent = t.genBtn;
+  $('bookGenBtnLabel').textContent = t.bookGenBtn;
+  $('bookPauseLabel').textContent = t.bookPause;
+  $('bookResumeLabel').textContent = t.bookResume;
+  // Textarea placeholder
+  $('textIn').placeholder = t.textPh;
+  // document lang
+  document.documentElement.lang = lang;
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -1787,6 +1864,8 @@ async function generateF5() {
     fd.append('text', text);
     const refFile = $('f5RefWav').files[0];
     if (refFile) fd.append('ref_wav', refFile);
+    const f5rt = $('f5RefText').value.trim();
+    if (f5rt) fd.append('ref_text', f5rt);
     const res = await fetch('/generate/f5_fr', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur F5-TTS'); }
     const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
@@ -1820,6 +1899,7 @@ async function generateKokoro() {
     const fd = new FormData();
     fd.append('text', text);
     fd.append('voice', $('kokoroVoice').value);
+    fd.append('speed', $('kokoroSpeed').value);
     const res = await fetch('/generate/kokoro_fr', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Kokoro'); }
     const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
@@ -1853,7 +1933,7 @@ async function generateChatterbox() {
     const fd = new FormData();
     fd.append('text', text);
     fd.append('exaggeration', $('cbExag').value);
-    fd.append('cfg_weight', '0.5');
+    fd.append('cfg_weight', $('cbCfg').value);
     const refFile = $('cbRefWav').files[0];
     if (refFile) fd.append('ref_wav', refFile);
     const res = await fetch('/generate/chatterbox', { method: 'POST', body: fd });

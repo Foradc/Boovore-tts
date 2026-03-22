@@ -645,13 +645,15 @@ async def generate_non_streaming(
 async def generate_kokoro_fr(
     text: str = Form(...),
     voice: str = Form("ff_siwis"),
+    speed: float = Form(1.0),
 ):
     if voice not in KOKORO_VOICES_FR:
         voice = "ff_siwis"
+    speed = max(0.5, min(2.0, speed))
     def _run():
         pipeline = _get_kokoro()
         chunks = []
-        for _gs, _ps, audio in pipeline(text, voice=voice):
+        for _gs, _ps, audio in pipeline(text, voice=voice, speed=speed):
             chunks.append(audio.numpy() if hasattr(audio, "numpy") else audio)
         if not chunks:
             raise ValueError("Kokoro: no audio generated")
