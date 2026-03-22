@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Faster Qwen3-TTS Demo Server
+TTS Demo Server
 
-Usage:
-    python demo/server.py
-    python demo/server.py --model Qwen/Qwen3-TTS-12Hz-1.7B-Base --port 7860
-    python demo/server.py --no-preload  # skip startup model load
+Qwen3-TTS (Clone / Custom / VoiceDesign) → local RTX 3090 via faster_qwen3_tts
+Kokoro FR   → local (hexgrad/Kokoro-82M)
+F5-TTS FR   → local (RASPIAUDIO checkpoint)
+Chatterbox  → local (ResembleAI)
+Fish-Speech → local (fishaudio/fish-speech-1.5)
 """
 
 import argparse
@@ -25,35 +26,117 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 import torch
-import torchaudio
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
-# ── XTTS Narrator proxy ───────────────────────────────────────────────────────
-import urllib.request, urllib.error
-_XTTS_URL = "http://localhost:7861"
+# ── Fish-Speech ───────────────────────────────────────────────────────────────
+FISH_SPEECH_REPO = Path("/tmp/fish-speech")
+FISH_SPEECH_MODEL = Path("/root/fish-speech-model")
+_fish_engine = None
+_fish_lock = threading.Lock()
 
-def _xtts_available() -> bool:
-    try:
-        urllib.request.urlopen(f"{_XTTS_URL}/status", timeout=1)
-        return True
-    except Exception:
-        return False
+def _get_fish_engine():
+    global _fish_engine
+    if _fish_engine is not None:
+        return _fish_engine
+    with _fish_lock:
+        if _fish_engine is not None:
+            return _fish_engine
+        if not FISH_SPEECH_REPO.exists():
+            raise RuntimeError("Fish-Speech repo not found at /tmp/fish-speech. Run: git clone https://github.com/fishaudio/fish-speech /tmp/fish-speech && cd /tmp/fish-speech && git checkout v1.5.1")
+        if not FISH_SPEECH_MODEL.exists():
+            raise RuntimeError("Fish-Speech model not found at /root/fish-speech-model. Download with: python3 -c \"from huggingface_hub import snapshot_download; snapshot_download('fishaudio/fish-speech-1.5', local_dir='/root/fish-speech-model')\"")
+        sys.path.insert(0, str(FISH_SPEECH_REPO))
+        from fish_speech.models.text2semantic.inference import launch_thread_safe_queue
+        from fish_speech.models.vqgan.inference import load_model as load_decoder_model
+        from fish_speech.inference_engine import TTSInferenceEngine
+        import torch as _torch
+        device = "cuda" if _torch.cuda.is_available() else "cpu"
+        precision = _torch.bfloat16
+        llama_queue = launch_thread_safe_queue(
+            checkpoint_path=str(FISH_SPEECH_MODEL),
+            device=device,
+            precision=precision,
+            compile=False,
+        )
+        decoder_model = load_decoder_model(
+            config_name="firefly_gan_vq",
+            checkpoint_path=str(FISH_SPEECH_MODEL / "firefly-gan-vq-fsq-8x1024-21hz-generator.pth"),
+            device=device,
+        )
+        _fish_engine = TTSInferenceEngine(
+            llama_queue=llama_queue,
+            decoder_model=decoder_model,
+            precision=precision,
+            compile=False,
+        )
+        return _fish_engine
 
-# Allow running from any directory
+
+# ── Kokoro French TTS ─────────────────────────────────────────────────────────
+_kokoro_pipeline = None
+_kokoro_lock = threading.Lock()
+
+KOKORO_VOICES_FR = {
+    "ff_siwis":  "Siwis — Femme FR",
+    "af_heart":  "Heart — Femme EN",
+    "bm_george": "George — Homme EN (UK)",
+    "am_echo":   "Echo — Homme EN",
+}
+
+def _get_kokoro():
+    global _kokoro_pipeline
+    if _kokoro_pipeline is None:
+        with _kokoro_lock:
+            if _kokoro_pipeline is None:
+                from kokoro import KPipeline
+                _kokoro_pipeline = KPipeline(lang_code="f")
+    return _kokoro_pipeline
+
+# ── Chatterbox TTS (ResembleAI) ───────────────────────────────────────────────
+_chatterbox_model = None
+_chatterbox_lock = threading.Lock()
+
+def _get_chatterbox():
+    global _chatterbox_model
+    if _chatterbox_model is None:
+        with _chatterbox_lock:
+            if _chatterbox_model is None:
+                from chatterbox.tts import ChatterboxTTS
+                _device = "cuda" if torch.cuda.is_available() else "cpu"
+                _chatterbox_model = ChatterboxTTS.from_pretrained(device=_device)
+    return _chatterbox_model
+
+# ── F5-TTS French (RASPIAUDIO checkpoint) ────────────────────────────────────
+_f5_model = None
+_f5_lock = threading.Lock()
+F5_FRENCH_CKPT = "hf://RASPIAUDIO/F5-French-MixedSpeakers-reduced/model_last_reduced.pt"
+F5_FRENCH_VOCAB = "hf://RASPIAUDIO/F5-French-MixedSpeakers-reduced/vocab.txt"
+
+def _get_f5():
+    global _f5_model
+    if _f5_model is None:
+        with _f5_lock:
+            if _f5_model is None:
+                from f5_tts.api import F5TTS
+                _f5_model = F5TTS(model_type="F5-TTS", ckpt_file=F5_FRENCH_CKPT, vocab_file=F5_FRENCH_VOCAB)
+    return _f5_model
+
+# ── Qwen3-TTS (local) ────────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from faster_qwen3_tts import FasterQwen3TTS
 except ImportError:
-    print("Error: faster_qwen3_tts not found.")
-    print("Install with:  pip install -e .  (from the repo root)")
+    print("Error: faster_qwen3_tts not found. Install with: pip install faster-qwen3-tts")
     sys.exit(1)
 
-from nano_parakeet import from_pretrained as _parakeet_from_pretrained
-
+try:
+    from nano_parakeet import from_pretrained as _parakeet_from_pretrained
+except ImportError:
+    _parakeet_from_pretrained = None
 
 _ALL_MODELS = [
     "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
@@ -71,14 +154,12 @@ else:
     AVAILABLE_MODELS = list(_ALL_MODELS)
 
 BASE_DIR = Path(__file__).resolve().parent
-# Assets that need to be downloaded at runtime go to a writable directory.
-# /app is read-only in HF Spaces; fall back to /tmp.
 _ASSET_DIR = Path(os.environ.get("ASSET_DIR", "/tmp/faster-qwen3-tts-assets"))
 PRESET_TRANSCRIPTS = _ASSET_DIR / "samples" / "parity" / "icl_transcripts.txt"
 PRESET_REFS = [
     ("ref_audio_3", _ASSET_DIR / "ref_audio_3.wav", "Clone 1"),
     ("ref_audio_2", _ASSET_DIR / "ref_audio_2.wav", "Clone 2"),
-    ("ref_audio", _ASSET_DIR / "ref_audio.wav", "Clone 3"),
+    ("ref_audio",   _ASSET_DIR / "ref_audio.wav",   "Clone 3"),
 ]
 
 _GITHUB_RAW = "https://raw.githubusercontent.com/andimarafioti/faster-qwen3-tts/main"
@@ -90,8 +171,7 @@ _PRESET_REMOTE = {
 _TRANSCRIPT_REMOTE = f"{_GITHUB_RAW}/samples/parity/icl_transcripts.txt"
 
 
-def _fetch_preset_assets() -> None:
-    """Download preset wav files and transcripts from GitHub if not present locally."""
+def _fetch_preset_assets():
     import urllib.request
     _ASSET_DIR.mkdir(parents=True, exist_ok=True)
     PRESET_TRANSCRIPTS.parent.mkdir(parents=True, exist_ok=True)
@@ -111,7 +191,7 @@ def _fetch_preset_assets() -> None:
 _preset_refs: dict[str, dict] = {}
 
 
-def _load_preset_transcripts() -> dict[str, str]:
+def _load_preset_transcripts():
     if not PRESET_TRANSCRIPTS.exists():
         return {}
     transcripts = {}
@@ -124,7 +204,7 @@ def _load_preset_transcripts() -> dict[str, str]:
     return transcripts
 
 
-def _load_preset_refs() -> None:
+def _load_preset_refs():
     transcripts = _load_preset_transcripts()
     for key, path, label in PRESET_REFS:
         if not path.exists():
@@ -132,41 +212,28 @@ def _load_preset_refs() -> None:
         content = path.read_bytes()
         cached_path = _get_cached_ref_path(content)
         _preset_refs[key] = {
-            "id": key,
-            "label": label,
-            "filename": path.name,
-            "path": cached_path,
-            "ref_text": transcripts.get(key, ""),
+            "id": key, "label": label, "filename": path.name,
+            "path": cached_path, "ref_text": transcripts.get(key, ""),
             "audio_b64": base64.b64encode(content).decode(),
         }
 
 
-def _prime_preset_voice_cache(model: FasterQwen3TTS) -> None:
+def _prime_preset_voice_cache(model):
     if not _preset_refs:
         return
     for preset in _preset_refs.values():
-        ref_path = preset["path"]
-        ref_text = preset["ref_text"]
         for xvec_only in (True, False):
             try:
                 model._prepare_generation(
-                    text="Hello.",
-                    ref_audio=ref_path,
-                    ref_text=ref_text,
-                    language="English",
-                    xvec_only=xvec_only,
-                    non_streaming_mode=True,
+                    text="Hello.", ref_audio=preset["path"], ref_text=preset["ref_text"],
+                    language="English", xvec_only=xvec_only, non_streaming_mode=True,
                 )
             except Exception:
                 continue
 
+
 app = FastAPI(title="Faster Qwen3-TTS Demo")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 _model_cache: OrderedDict[str, FasterQwen3TTS] = OrderedDict()
 _model_cache_max: int = int(os.environ.get("MODEL_CACHE_SIZE", "2"))
@@ -176,17 +243,13 @@ _ref_cache: dict[str, str] = {}
 _ref_cache_lock = threading.Lock()
 _parakeet = None
 _generation_lock = asyncio.Lock()
-_generation_waiters: int = 0  # requests waiting for or holding the generation lock
+_generation_waiters: int = 0
 
-# Guard against inputs that would overflow the static KV cache (max_seq_len=2048).
-# At ~3-4 chars/token for English the overhead of system/ref tokens leaves room
-# for roughly 1000 chars before we approach the limit.
-MAX_TEXT_CHARS = 5000
-# ~10 MB covers 1 minute of 44.1 kHz stereo 16-bit WAV.
+MAX_TEXT_CHARS  = 15000
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 _AUDIO_TOO_LARGE_MSG = (
     "Audio file too large ({size_mb:.1f} MB). "
-    "Voice cloning works best with short clips under 1 minute — please upload a shorter recording."
+    "Please upload a shorter recording (under 1 minute)."
 )
 
 
@@ -199,8 +262,7 @@ def _to_wav_b64(audio: np.ndarray, sr: int) -> str:
         audio = audio.squeeze()
     buf = io.BytesIO()
     sf.write(buf, audio, sr, format="WAV", subtype="PCM_16")
-    b64 = base64.b64encode(buf.getvalue()).decode()
-    return b64
+    return base64.b64encode(buf.getvalue()).decode()
 
 
 def _concat_audio(audio_list) -> np.ndarray:
@@ -209,14 +271,14 @@ def _concat_audio(audio_list) -> np.ndarray:
     parts = [np.array(a, dtype=np.float32).squeeze() for a in audio_list if len(a) > 0]
     return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
 
+
 def _get_cached_ref_path(content: bytes) -> str:
     digest = hashlib.sha1(content).hexdigest()
     with _ref_cache_lock:
         cached = _ref_cache.get(digest)
         if cached and os.path.exists(cached):
             return cached
-        tmp_dir = Path(tempfile.gettempdir())
-        path = tmp_dir / f"faster_qwen3_tts_ref_{digest}.wav"
+        path = Path(tempfile.gettempdir()) / f"qwen3tts_ref_{digest}.wav"
         if not path.exists():
             path.write_bytes(content)
         _ref_cache[digest] = str(path)
@@ -235,18 +297,13 @@ async def root():
 
 @app.post("/transcribe")
 async def transcribe_audio(audio: UploadFile = File(...)):
-    """Transcribe reference audio using nano-parakeet."""
     if _parakeet is None:
         raise HTTPException(status_code=503, detail="Transcription model not loaded")
-
     content = await audio.read()
     if len(content) > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(content) / 1024 / 1024),
-        )
-
+        raise HTTPException(status_code=400, detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(content)/1024/1024))
     def run():
+        import torchaudio
         wav, sr = sf.read(io.BytesIO(content), dtype="float32", always_2d=False)
         if wav.ndim > 1:
             wav = wav.mean(axis=1)
@@ -254,7 +311,6 @@ async def transcribe_audio(audio: UploadFile = File(...)):
         if sr != 16000:
             wav_t = torchaudio.functional.resample(wav_t.unsqueeze(0), sr, 16000).squeeze(0)
         return _parakeet.transcribe(wav_t.cuda())
-
     text = await asyncio.to_thread(run)
     return {"text": text}
 
@@ -278,69 +334,28 @@ async def get_status():
         "model_type": model_type,
         "speakers": speakers,
         "transcription_available": _parakeet is not None,
-        "preset_refs": [
-            {"id": p["id"], "label": p["label"], "ref_text": p["ref_text"]}
-            for p in _preset_refs.values()
-        ],
+        "preset_refs": [{"id": p["id"], "label": p["label"], "ref_text": p["ref_text"]} for p in _preset_refs.values()],
         "queue_depth": _generation_waiters,
         "cached_models": list(_model_cache.keys()),
-        "xtts_available": _xtts_available(),
-    }
-
-
-@app.post("/generate/xtts_narrator")
-async def generate_xtts_narrator(text: str = Form(...)):
-    """Proxy to XTTS narrator server on port 7861."""
-    if not _xtts_available():
-        raise HTTPException(status_code=503, detail="XTTS narrator server not running. Lancez start_xtts.bat")
-    import urllib.parse
-    data = urllib.parse.urlencode({"text": text}).encode()
-    req = urllib.request.Request(f"{_XTTS_URL}/generate", data=data)
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            wav_bytes = resp.read()
-        return Response(content=wav_bytes, media_type="audio/wav")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/preset_ref/{preset_id}")
-async def get_preset_ref(preset_id: str):
-    preset = _preset_refs.get(preset_id)
-    if not preset:
-        raise HTTPException(status_code=404, detail="Preset not found")
-    return {
-        "id": preset["id"],
-        "label": preset["label"],
-        "filename": preset["filename"],
-        "ref_text": preset["ref_text"],
-        "audio_b64": preset["audio_b64"],
+        "kokoro_voices": KOKORO_VOICES_FR,
     }
 
 
 @app.post("/load")
 async def load_model(model_id: str = Form(...)):
     global _active_model_name, _loading
-
-    # Already in cache — instant switch, no GPU work needed
     if model_id in _model_cache:
         _active_model_name = model_id
         _model_cache.move_to_end(model_id)
         return {"status": "already_loaded", "model": model_id}
-
     _loading = True
-
     def _do_load():
         global _active_model_name, _loading
         try:
             if len(_model_cache) >= _model_cache_max:
                 evicted, _ = _model_cache.popitem(last=False)
                 print(f"Model cache full — evicted: {evicted}")
-            new_model = FasterQwen3TTS.from_pretrained(
-                model_id,
-                device="cuda",
-                dtype=torch.bfloat16,
-            )
+            new_model = FasterQwen3TTS.from_pretrained(model_id, device="cuda", dtype=torch.bfloat16)
             print("Capturing CUDA graphs…")
             new_model._warmup(prefill_len=100)
             _model_cache[model_id] = new_model
@@ -350,8 +365,6 @@ async def load_model(model_id: str = Form(...)):
             print("CUDA graphs captured — model ready.")
         finally:
             _loading = False
-
-    # Hold the generation lock while loading to prevent OOM from concurrent inference
     async with _generation_lock:
         await asyncio.to_thread(_do_load)
     return {"status": "loaded", "model": model_id}
@@ -367,19 +380,17 @@ async def generate_stream(
     instruct: str = Form(""),
     xvec_only: bool = Form(True),
     chunk_size: int = Form(8),
-    temperature: float = Form(0.9),
-    top_k: int = Form(50),
-    repetition_penalty: float = Form(1.05),
+    temperature: float = Form(0.7),
+    top_k: int = Form(30),
+    repetition_penalty: float = Form(1.1),
     ref_preset: str = Form(""),
     ref_audio: UploadFile = File(None),
+    seed: int = Form(None),
 ):
     if not _active_model_name or _active_model_name not in _model_cache:
-        raise HTTPException(status_code=400, detail="Model not loaded. Click 'Load' first.")
+        raise HTTPException(status_code=400, detail="Modèle non chargé. Cliquez sur 'Load' d'abord.")
     if len(text) > MAX_TEXT_CHARS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Text too long ({len(text)} chars). Maximum is {MAX_TEXT_CHARS} characters.",
-        )
+        raise HTTPException(status_code=400, detail=f"Texte trop long ({len(text)} chars). Max {MAX_TEXT_CHARS}.")
 
     tmp_path = None
     tmp_is_cached = False
@@ -393,10 +404,7 @@ async def generate_stream(
     elif ref_audio and ref_audio.filename:
         content = await ref_audio.read()
         if len(content) > MAX_AUDIO_BYTES:
-            raise HTTPException(
-                status_code=400,
-                detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(content) / 1024 / 1024),
-            )
+            raise HTTPException(status_code=400, detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(content)/1024/1024))
         tmp_path = _get_cached_ref_path(content)
         tmp_is_cached = True
 
@@ -405,62 +413,40 @@ async def generate_stream(
 
     def run_generation():
         try:
-            # Resolve the model after the generation lock is held so we always
-            # use the currently active model, not a stale reference captured
-            # before a concurrent /load request changed the active model.
             model = _model_cache.get(_active_model_name)
             if model is None:
-                raise RuntimeError("No model loaded. Please load a model first.")
-
+                raise RuntimeError("No model loaded.")
+            if seed is not None:
+                torch.manual_seed(seed)
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed_all(seed)
             t0 = time.perf_counter()
             total_audio_s = 0.0
             voice_clone_ms = 0.0
 
             if mode == "voice_clone":
                 gen = model.generate_voice_clone_streaming(
-                    text=text,
-                    language=language,
-                    ref_audio=tmp_path,
-                    ref_text=ref_text,
-                    xvec_only=xvec_only,
-                    chunk_size=chunk_size,
-                    temperature=temperature,
-                    top_k=top_k,
-                    repetition_penalty=repetition_penalty,
-                    max_new_tokens=1800,  # cap at 150s (12 Hz codec)
+                    text=text, language=language, ref_audio=tmp_path, ref_text=ref_text,
+                    xvec_only=xvec_only, chunk_size=chunk_size, temperature=temperature,
+                    top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
                 )
             elif mode == "custom":
                 if not speaker:
-                    raise ValueError("Speaker ID is required for custom voice")
+                    raise ValueError("Speaker ID required for custom voice")
                 gen = model.generate_custom_voice_streaming(
-                    text=text,
-                    speaker=speaker,
-                    language=language,
-                    instruct=instruct,
-                    chunk_size=chunk_size,
-                    temperature=temperature,
-                    top_k=top_k,
-                    repetition_penalty=repetition_penalty,
-                    max_new_tokens=360,
+                    text=text, speaker=speaker, language=language, instruct=instruct,
+                    chunk_size=chunk_size, temperature=temperature, top_k=top_k,
+                    repetition_penalty=repetition_penalty, max_new_tokens=1800,
                 )
             else:
                 gen = model.generate_voice_design_streaming(
-                    text=text,
-                    instruct=instruct,
-                    language=language,
-                    chunk_size=chunk_size,
-                    temperature=temperature,
-                    top_k=top_k,
-                    repetition_penalty=repetition_penalty,
-                    max_new_tokens=360,
+                    text=text, instruct=instruct, language=language, chunk_size=chunk_size,
+                    temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty,
+                    max_new_tokens=1800,
                 )
 
-            # Use timing data from the generator itself (measured after voice-clone
-            # encoding, so TTFA and RTF reflect pure LLM generation latency).
             ttfa_ms = None
             total_gen_ms = 0.0
-
-            # Prime generator to capture wall-clock time to first chunk
             first_audio = next(gen, None)
             if first_audio is not None:
                 audio_chunk, sr, timing = first_audio
@@ -470,64 +456,45 @@ async def generate_stream(
                 total_gen_ms += timing.get('prefill_ms', 0) + timing.get('decode_ms', 0)
                 if ttfa_ms is None:
                     ttfa_ms = total_gen_ms
-
                 audio_chunk = _concat_audio(audio_chunk)
                 dur = len(audio_chunk) / sr
                 total_audio_s += dur
                 rtf = total_audio_s / (total_gen_ms / 1000) if total_gen_ms > 0 else 0.0
-
-                audio_b64 = _to_wav_b64(audio_chunk, sr)
-                payload = {
-                    "type": "chunk",
-                    "audio_b64": audio_b64,
-                    "sample_rate": sr,
-                    "ttfa_ms": round(ttfa_ms),
-                    "voice_clone_ms": round(voice_clone_ms),
-                    "rtf": round(rtf, 3),
-                    "total_audio_s": round(total_audio_s, 3),
+                loop.call_soon_threadsafe(queue.put_nowait, json.dumps({
+                    "type": "chunk", "audio_b64": _to_wav_b64(audio_chunk, sr),
+                    "sample_rate": sr, "ttfa_ms": round(ttfa_ms), "voice_clone_ms": round(voice_clone_ms),
+                    "rtf": round(rtf, 3), "total_audio_s": round(total_audio_s, 3),
                     "elapsed_ms": round(time.perf_counter() - t0, 3) * 1000,
-                }
-                loop.call_soon_threadsafe(queue.put_nowait, json.dumps(payload))
+                }))
 
             for audio_chunk, sr, timing in gen:
-                # prefill_ms is non-zero only on the first chunk
                 total_gen_ms += timing.get('prefill_ms', 0) + timing.get('decode_ms', 0)
                 if ttfa_ms is None:
-                    ttfa_ms = total_gen_ms  # already in ms
-
+                    ttfa_ms = total_gen_ms
                 audio_chunk = _concat_audio(audio_chunk)
                 dur = len(audio_chunk) / sr
                 total_audio_s += dur
                 rtf = total_audio_s / (total_gen_ms / 1000) if total_gen_ms > 0 else 0.0
-
-                audio_b64 = _to_wav_b64(audio_chunk, sr)
-                payload = {
-                    "type": "chunk",
-                    "audio_b64": audio_b64,
-                    "sample_rate": sr,
-                    "ttfa_ms": round(ttfa_ms),
-                    "voice_clone_ms": round(voice_clone_ms),
-                    "rtf": round(rtf, 3),
-                    "total_audio_s": round(total_audio_s, 3),
+                loop.call_soon_threadsafe(queue.put_nowait, json.dumps({
+                    "type": "chunk", "audio_b64": _to_wav_b64(audio_chunk, sr),
+                    "sample_rate": sr, "ttfa_ms": round(ttfa_ms), "voice_clone_ms": round(voice_clone_ms),
+                    "rtf": round(rtf, 3), "total_audio_s": round(total_audio_s, 3),
                     "elapsed_ms": round(time.perf_counter() - t0, 3) * 1000,
-                }
-                loop.call_soon_threadsafe(queue.put_nowait, json.dumps(payload))
+                }))
 
             rtf = total_audio_s / (total_gen_ms / 1000) if total_gen_ms > 0 else 0.0
-            done_payload = {
-                "type": "done",
-                "ttfa_ms": round(ttfa_ms) if ttfa_ms else 0,
-                "voice_clone_ms": round(voice_clone_ms),
-                "rtf": round(rtf, 3),
+            loop.call_soon_threadsafe(queue.put_nowait, json.dumps({
+                "type": "done", "ttfa_ms": round(ttfa_ms) if ttfa_ms else 0,
+                "voice_clone_ms": round(voice_clone_ms), "rtf": round(rtf, 3),
                 "total_audio_s": round(total_audio_s, 3),
                 "total_ms": round((time.perf_counter() - t0) * 1000),
-            }
-            loop.call_soon_threadsafe(queue.put_nowait, json.dumps(done_payload))
+            }))
 
         except Exception as e:
             import traceback
-            err = {"type": "error", "message": str(e), "detail": traceback.format_exc()}
-            loop.call_soon_threadsafe(queue.put_nowait, json.dumps(err))
+            loop.call_soon_threadsafe(queue.put_nowait, json.dumps({
+                "type": "error", "message": str(e), "detail": traceback.format_exc()
+            }))
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, None)
             if tmp_path and os.path.exists(tmp_path) and not tmp_is_cached:
@@ -541,14 +508,10 @@ async def generate_stream(
         try:
             if people_ahead > 0:
                 yield f"data: {json.dumps({'type': 'queued', 'position': people_ahead})}\n\n"
-
             await _generation_lock.acquire()
             lock_acquired = True
             _generation_waiters -= 1
-
-            thread = threading.Thread(target=run_generation, daemon=True)
-            thread.start()
-
+            threading.Thread(target=run_generation, daemon=True).start()
             while True:
                 msg = await queue.get()
                 if msg is None:
@@ -562,13 +525,8 @@ async def generate_stream(
             else:
                 _generation_waiters -= 1
 
-    return StreamingResponse(
-        sse(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
+    return StreamingResponse(sse(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/generate")
@@ -580,23 +538,20 @@ async def generate_non_streaming(
     speaker: str = Form(""),
     instruct: str = Form(""),
     xvec_only: bool = Form(True),
-    temperature: float = Form(0.9),
-    top_k: int = Form(50),
-    repetition_penalty: float = Form(1.05),
+    temperature: float = Form(0.7),
+    top_k: int = Form(30),
+    repetition_penalty: float = Form(1.1),
     ref_preset: str = Form(""),
     ref_audio: UploadFile = File(None),
+    seed: int = Form(None),
 ):
     if not _active_model_name or _active_model_name not in _model_cache:
-        raise HTTPException(status_code=400, detail="Model not loaded. Click 'Load' first.")
+        raise HTTPException(status_code=400, detail="Modèle non chargé.")
     if len(text) > MAX_TEXT_CHARS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Text too long ({len(text)} chars). Maximum is {MAX_TEXT_CHARS} characters.",
-        )
+        raise HTTPException(status_code=400, detail=f"Texte trop long ({len(text)} chars).")
 
     tmp_path = None
     tmp_is_cached = False
-
     if ref_preset and ref_preset in _preset_refs:
         preset = _preset_refs[ref_preset]
         tmp_path = preset["path"]
@@ -606,53 +561,36 @@ async def generate_non_streaming(
     elif ref_audio and ref_audio.filename:
         content = await ref_audio.read()
         if len(content) > MAX_AUDIO_BYTES:
-            raise HTTPException(
-                status_code=400,
-                detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(content) / 1024 / 1024),
-            )
+            raise HTTPException(status_code=400, detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(content)/1024/1024))
         tmp_path = _get_cached_ref_path(content)
         tmp_is_cached = True
 
     def run():
-        # Resolve the model after the generation lock is held.
         model = _model_cache.get(_active_model_name)
         if model is None:
-            raise RuntimeError("No model loaded. Please load a model first.")
+            raise RuntimeError("No model loaded.")
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
         t0 = time.perf_counter()
         if mode == "voice_clone":
             audio_list, sr = model.generate_voice_clone(
-                text=text,
-                language=language,
-                ref_audio=tmp_path,
-                ref_text=ref_text,
-                xvec_only=xvec_only,
-                temperature=temperature,
-                top_k=top_k,
-                repetition_penalty=repetition_penalty,
-                max_new_tokens=1800,  # cap at 150s (12 Hz codec)
+                text=text, language=language, ref_audio=tmp_path, ref_text=ref_text,
+                xvec_only=xvec_only, temperature=temperature, top_k=top_k,
+                repetition_penalty=repetition_penalty, max_new_tokens=1800,
             )
         elif mode == "custom":
             if not speaker:
-                raise ValueError("Speaker ID is required for custom voice")
+                raise ValueError("Speaker ID required")
             audio_list, sr = model.generate_custom_voice(
-                text=text,
-                speaker=speaker,
-                language=language,
-                instruct=instruct,
-                temperature=temperature,
-                top_k=top_k,
-                repetition_penalty=repetition_penalty,
-                max_new_tokens=360,
+                text=text, speaker=speaker, language=language, instruct=instruct,
+                temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
             )
         else:
             audio_list, sr = model.generate_voice_design(
-                text=text,
-                instruct=instruct,
-                language=language,
-                temperature=temperature,
-                top_k=top_k,
-                repetition_penalty=repetition_penalty,
-                max_new_tokens=360,
+                text=text, instruct=instruct, language=language,
+                temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
             )
         elapsed = time.perf_counter() - t0
         audio = _concat_audio(audio_list)
@@ -671,11 +609,7 @@ async def generate_non_streaming(
         return JSONResponse({
             "audio_b64": _to_wav_b64(audio, sr),
             "sample_rate": sr,
-            "metrics": {
-                "total_ms": round(elapsed * 1000),
-                "audio_duration_s": round(dur, 3),
-                "rtf": round(rtf, 3),
-            },
+            "metrics": {"total_ms": round(elapsed * 1000), "audio_duration_s": round(dur, 3), "rtf": round(rtf, 3)},
         })
     finally:
         if lock_acquired:
@@ -686,32 +620,190 @@ async def generate_non_streaming(
             os.unlink(tmp_path)
 
 
+@app.post("/generate/kokoro_fr")
+async def generate_kokoro_fr(
+    text: str = Form(...),
+    voice: str = Form("ff_siwis"),
+):
+    if voice not in KOKORO_VOICES_FR:
+        voice = "ff_siwis"
+    def _run():
+        pipeline = _get_kokoro()
+        chunks = []
+        for _gs, _ps, audio in pipeline(text, voice=voice):
+            chunks.append(audio.numpy() if hasattr(audio, "numpy") else audio)
+        if not chunks:
+            raise ValueError("Kokoro: no audio generated")
+        combined = np.concatenate(chunks)
+        buf = io.BytesIO()
+        sf.write(buf, combined, 24000, format="WAV")
+        buf.seek(0)
+        return buf.read()
+    try:
+        wav_bytes = await asyncio.get_event_loop().run_in_executor(None, _run)
+        return Response(content=wav_bytes, media_type="audio/wav")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/generate/f5_fr")
+async def generate_f5_fr(
+    text: str = Form(...),
+    ref_wav: UploadFile = File(None),
+    ref_text: str = Form(""),
+):
+    ref_path = None
+    cleanup_ref = False
+    if ref_wav and ref_wav.filename:
+        ref_bytes = await ref_wav.read()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(ref_bytes)
+            ref_path = tmp.name
+            cleanup_ref = True
+    else:
+        default_ref = Path(__file__).parent / "narrator_ref.wav"
+        if default_ref.exists():
+            ref_path = str(default_ref)
+
+    def _run():
+        model = _get_f5()
+        out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        out_path = out_tmp.name
+        out_tmp.close()
+        try:
+            model.infer(ref_file=ref_path, ref_text=ref_text or None, gen_text=text, file_wave=out_path)
+            return open(out_path, "rb").read()
+        finally:
+            os.unlink(out_path)
+            if cleanup_ref and ref_path:
+                os.unlink(ref_path)
+
+    try:
+        wav_bytes = await asyncio.get_event_loop().run_in_executor(None, _run)
+        return Response(content=wav_bytes, media_type="audio/wav")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/generate/chatterbox")
+async def generate_chatterbox(
+    text: str = Form(...),
+    ref_wav: UploadFile = File(None),
+    exaggeration: float = Form(0.5),
+    cfg_weight: float = Form(0.5),
+):
+    ref_path = None
+    cleanup_ref = False
+    if ref_wav and ref_wav.filename:
+        ref_bytes = await ref_wav.read()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(ref_bytes)
+            ref_path = tmp.name
+            cleanup_ref = True
+
+    def _run():
+        import torchaudio
+        model = _get_chatterbox()
+        wav = model.generate(text, audio_prompt_path=ref_path, exaggeration=exaggeration, cfg_weight=cfg_weight)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as out_tmp:
+            out_path = out_tmp.name
+        try:
+            torchaudio.save(out_path, wav, model.sr)
+            return open(out_path, "rb").read()
+        finally:
+            os.unlink(out_path)
+
+    try:
+        wav_bytes = await asyncio.get_event_loop().run_in_executor(None, _run)
+        return Response(content=wav_bytes, media_type="audio/wav")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if cleanup_ref and ref_path and os.path.exists(ref_path):
+            os.unlink(ref_path)
+
+
+@app.post("/generate/fish")
+async def generate_fish(
+    text: str = Form(...),
+    ref_wav: UploadFile = File(None),
+    ref_text: str = Form(""),
+    temperature: float = Form(0.7),
+    top_p: float = Form(0.7),
+    repetition_penalty: float = Form(1.2),
+    seed: int = Form(None),
+):
+    ref_path = None
+    cleanup_ref = False
+    if ref_wav and ref_wav.filename:
+        ref_bytes = await ref_wav.read()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(ref_bytes)
+            ref_path = tmp.name
+            cleanup_ref = True
+
+    def _run():
+        sys.path.insert(0, str(FISH_SPEECH_REPO))
+        from fish_speech.utils.schema import ServeTTSRequest, ServeReferenceAudio
+        engine = _get_fish_engine()
+        references = []
+        if ref_path:
+            with open(ref_path, "rb") as f:
+                ref_audio_bytes = f.read()
+            references = [ServeReferenceAudio(audio=ref_audio_bytes, text=ref_text or "")]
+        req = ServeTTSRequest(
+            text=text,
+            references=references,
+            temperature=max(0.1, min(1.0, temperature)),
+            top_p=max(0.1, min(1.0, top_p)),
+            repetition_penalty=max(0.9, min(2.0, repetition_penalty)),
+            seed=seed,
+            format="wav",
+            streaming=False,
+        )
+        audio_chunks = []
+        sample_rate = 44100
+        for result in engine.inference(req):
+            if result.code == "header":
+                if isinstance(result.audio, tuple):
+                    sample_rate = result.audio[0]
+            elif result.code in ("segment", "final"):
+                if isinstance(result.audio, tuple):
+                    audio_chunks.append(result.audio[1])
+        if not audio_chunks:
+            raise ValueError("Fish-Speech: no audio generated")
+        combined = np.concatenate(audio_chunks)
+        buf = io.BytesIO()
+        sf.write(buf, combined, sample_rate, format="WAV")
+        buf.seek(0)
+        return buf.read()
+
+    try:
+        wav_bytes = await asyncio.get_event_loop().run_in_executor(None, _run)
+        return Response(content=wav_bytes, media_type="audio/wav")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if cleanup_ref and ref_path and os.path.exists(ref_path):
+            os.unlink(ref_path)
+
+
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Faster Qwen3-TTS Demo Server")
-    parser.add_argument(
-        "--model",
-        default="Qwen/Qwen3-TTS-12Hz-0.6B-Base",
-        help="Model to preload at startup (default: 0.6B-Base)",
-    )
+    parser.add_argument("--model", default="Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+                        help="Model to preload at startup")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 7860)))
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument(
-        "--no-preload",
-        action="store_true",
-        help="Skip model loading at startup (load via UI instead)",
-    )
+    parser.add_argument("--no-preload", action="store_true",
+                        help="Skip model loading at startup")
     args = parser.parse_args()
 
     if not args.no_preload:
         global _active_model_name, _parakeet
         print(f"Loading model: {args.model}")
-        _startup_model = FasterQwen3TTS.from_pretrained(
-            args.model,
-            device="cuda",
-            dtype=torch.bfloat16,
-        )
+        _startup_model = FasterQwen3TTS.from_pretrained(args.model, device="cuda", dtype=torch.bfloat16)
         print("Capturing CUDA graphs…")
         _startup_model._warmup(prefill_len=100)
         _model_cache[args.model] = _startup_model
@@ -719,9 +811,10 @@ def main():
         _prime_preset_voice_cache(_startup_model)
         print("TTS model ready.")
 
-        print("Loading transcription model (nano-parakeet)…")
-        _parakeet = _parakeet_from_pretrained(device="cuda")
-        print("Transcription model ready.")
+        if _parakeet_from_pretrained:
+            print("Loading transcription model (nano-parakeet)…")
+            _parakeet = _parakeet_from_pretrained(device="cuda")
+            print("Transcription model ready.")
 
         print(f"Ready. Open http://localhost:{args.port}")
 

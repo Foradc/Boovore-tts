@@ -1,1 +1,15 @@
 narrator_ref.wav
+*.wav
+*.mp3
+*.flac
+*.ogg
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+models/
+*.log
+.DS_Store
+rustup/

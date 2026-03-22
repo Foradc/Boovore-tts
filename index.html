@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>Faster Qwen3-TTS</title>
+<title>Boovore — Multi-Engine TTS Studio</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -45,7 +45,7 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
-html, body { height: 100%; overflow: hidden; }
+html, body { height: 100%; overflow: auto; }
 
 body {
   background: var(--bg);
@@ -59,7 +59,7 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: 100vh;
   min-height: 100dvh;
   max-width: 680px;
@@ -202,6 +202,8 @@ body {
   background: var(--accent-bg);
   animation: flicker-in 0.35s step-end;
 }
+/* Always show tags on compatible rows */
+.mode-row.compatible .switch-tag { display: inline-flex; }
 @keyframes flicker-in {
   0%   { opacity: 0; } 20% { opacity: 1; } 35% { opacity: 0.2; }
   55%  { opacity: 1; } 70% { opacity: 0.5; } 100% { opacity: 1; }
@@ -710,7 +712,17 @@ body {
 .ch-dl:hover { border-color: var(--accent); color: var(--accent); }
 .book-gen-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .book-stats { font-size: 11px; color: var(--dim); font-family: monospace; }
-.book-voice-note { font-size: 11px; color: var(--dimmer); }
+.book-voice-note { font-size: 11px; color: var(--dimmer); display:none; }
+/* Book voice selector */
+.bvs-wrap { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg2,var(--surface)); margin-bottom: 2px; }
+.bvs-label { font-size: 10px; color: var(--dim); font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.6px; }
+.bvs-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+.bvs-tab { padding: 3px 8px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text2); cursor: pointer; transition: all 0.15s; font-family: inherit; }
+.bvs-tab:hover { border-color: var(--accent); color: var(--accent); }
+.bvs-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.bvs-panel { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-height: 28px; }
+.bvs-select { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; flex: 1; min-width: 120px; }
+.bvs-file { font-size: 11px; color: var(--dim); flex: 2; min-width: 140px; }
 .book-progress-row { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-top: 2px; }
 .book-pct { font-weight: 700; font-family: monospace; min-width: 36px; color: var(--accent); flex-shrink: 0; }
 .book-eta { color: var(--dim); margin-left: auto; font-family: monospace; font-size: 11px; }
@@ -726,6 +738,152 @@ body {
   font-size: 11px; color: var(--dim); cursor: pointer; flex-shrink: 0;
 }
 .auto-dl-label input { accent-color: var(--accent); }
+
+/* ── Inner tabs (hidden, kept for JS compat) ── */
+.inner-tab-bar { display: none; }
+.inner-tab { display: none; }
+
+/* ── Engine rows: hide all by default, show only selected ── */
+#innerPanelFR .mode-row { display: none; }
+#innerPanelFR .mode-row.eng-active { display: block; }
+/* In FR rows, hide individual play buttons — use central gen button instead */
+#innerPanelFR .mode-row .play-btn { display: none; }
+
+/* Central generate row */
+.studio-gen-row { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+/* ── Engine pill selector ── */
+.engine-section {
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.engine-group { display: flex; flex-direction: column; gap: 6px; }
+.engine-group-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.7px;
+  text-transform: uppercase; color: var(--dimmer);
+}
+.engine-pills-row { display: flex; gap: 5px; flex-wrap: wrap; }
+.epill {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 11px; border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: var(--surface2); cursor: pointer;
+  font-size: 12px; font-weight: 500; color: var(--text2);
+  font-family: inherit; transition: all 0.15s;
+  white-space: nowrap;
+}
+.epill:hover { border-color: var(--border); color: var(--text); background: var(--surface); }
+.epill.active {
+  border-color: var(--ep-color, var(--accent));
+  color: var(--ep-color, var(--accent));
+  background: color-mix(in srgb, var(--ep-color, var(--accent)) 10%, transparent);
+  box-shadow: 0 0 0 1px var(--ep-color, var(--accent));
+}
+.ep-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.ep-tag {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 1px 5px; border-radius: 10px; color: #fff;
+  margin-left: 2px;
+}
+.engine-divider {
+  height: 1px; background: var(--border); margin: 2px 0;
+}
+/* Engine panel (settings for selected engine) */
+.engine-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 12px;
+}
+/* ── Big generate button ── */
+.gen-section { flex-shrink: 0; }
+.gen-btn {
+  width: 100%; padding: 13px 20px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: var(--radius);
+  font-size: 15px; font-weight: 700; font-family: inherit;
+  cursor: pointer; transition: all 0.18s;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  letter-spacing: 0.02em;
+}
+.gen-btn:hover:not(:disabled) { background: var(--accent2); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(139,92,246,0.35); }
+.gen-btn:active { transform: translateY(0); }
+.gen-btn:disabled { opacity: 0.38; cursor: not-allowed; transform: none; box-shadow: none; }
+.gen-btn svg { width: 16px; height: 16px; }
+
+/* ── Audiobook drop zone ── */
+.drop-zone {
+  border: 2px dashed var(--border2); border-radius: var(--radius);
+  padding: 22px 16px; text-align: center; cursor: pointer;
+  transition: all 0.18s; background: var(--surface);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent); background: var(--accent-bg);
+}
+.drop-zone svg { width: 28px; height: 28px; color: var(--dim); }
+.drop-zone.drag-over svg { color: var(--accent); }
+.dz-title { font-size: 13px; font-weight: 600; color: var(--text2); }
+.dz-sub { font-size: 11px; color: var(--dimmer); }
+.dz-btn {
+  margin-top: 4px; padding: 6px 16px; font-size: 12px; font-weight: 500;
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: var(--radius-sm); color: var(--text2); cursor: pointer;
+  font-family: inherit; transition: all 0.15s; position: relative; overflow: hidden;
+}
+.dz-btn:hover { border-color: var(--accent); color: var(--accent); }
+.dz-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+/* ── Audiobook sections ── */
+.book-section {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden;
+}
+.book-section-hdr {
+  padding: 8px 14px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+  text-transform: uppercase; color: var(--dim);
+  display: flex; align-items: center; gap: 8px;
+}
+.book-section-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+/* ── Tab bar (larger, more visual) ── */
+.tab-bar {
+  display: flex; gap: 2px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border); padding-bottom: 0;
+}
+.tab {
+  padding: 8px 16px; font-size: 13px; font-weight: 500;
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--dim); cursor: pointer; font-family: inherit;
+  transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+  margin-bottom: -1px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab svg { width: 14px; height: 14px; }
+
+/* ── App wider ── */
+.app { max-width: 780px; }
+
+/* ── Qwen3 loader inline ── */
+.qwen-loader {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  padding: 8px 10px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+}
+.qwen-loader-group { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 120px; }
+.qwen-loader-label { font-size: 11px; color: var(--dim); white-space: nowrap; }
+
+/* ── Results section header ── */
+.results-hdr {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.7px;
+  text-transform: uppercase; color: var(--dimmer);
+  flex-shrink: 0;
+}
 </style>
 </head>
 <body>
@@ -733,33 +891,178 @@ body {
 
   <!-- Header -->
   <header class="hdr">
-    <h1>faster-qwen3-tts</h1>
-    <span class="badge">CUDA GRAPHS</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:20px;height:20px;color:var(--accent);flex-shrink:0"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    <h1 style="font-size:16px;letter-spacing:-0.5px">Boovore</h1>
+    <span class="badge" style="font-size:9px">MULTI-ENGINE</span>
     <span class="spacer"></span>
-    <button class="mpill" onclick="openSettings()" title="Settings">
+    <button class="mpill" onclick="openSettings()" title="Modèle Qwen3">
       <span class="mdot" id="mdot"></span>
       <span id="mtext">not loaded</span>
     </button>
-    <button class="ibtn" onclick="openSettings()" title="Settings">
+    <button class="ibtn" onclick="openSettings()" title="Paramètres Qwen3">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     </button>
-    <button class="ibtn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">
+    <button class="ibtn" id="themeBtn" onclick="toggleTheme()" title="Thème">
       <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
   </header>
 
   <!-- Tab bar -->
   <div class="tab-bar">
-    <button class="tab active" data-tab="tts" onclick="switchTab('tts')">TTS</button>
-    <button class="tab" data-tab="book" onclick="switchTab('book')">Audiobook</button>
+    <button class="tab active" data-tab="tts" onclick="switchTab('tts')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+      Studio
+    </button>
+    <button class="tab" data-tab="book" onclick="switchTab('book')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+      Livre Audio
+    </button>
   </div>
 
   <!-- TTS panel -->
   <div id="panelTTS">
   <div class="main">
     <div class="text-wrap">
-      <textarea id="textIn" placeholder="Enter text to synthesize..." oninput="updateEstimation()">Against the odds, the wild lobster has found a new vessel for its voice. And with it, the possibility to realise its full potential.</textarea>
+      <textarea id="textIn" placeholder="Entrez votre texte ici..." oninput="updateEstimation()">La découverte d'une technologie quantique révolutionnaire déclenche une guerre d'IA entre les puissantes dynasties de la Terre et les colonies du système solaire.</textarea>
       <div class="est-bar" id="estBar"></div>
+    </div>
+
+    <!-- Engine pill selector -->
+    <div class="engine-section" id="engineSection">
+      <div class="engine-group">
+        <div class="engine-group-label">Instantané · prêt à l'emploi</div>
+        <div class="engine-pills-row">
+          <button class="epill active" id="pill-kokoro" style="--ep-color:#22c55e" onclick="selectStudioEngine('kokoro')">
+            <span class="ep-dot" style="background:#22c55e"></span>
+            Kokoro FR
+            <span class="ep-tag" style="background:#22c55e">FAST</span>
+          </button>
+          <button class="epill" id="pill-chatterbox" style="--ep-color:#059669" onclick="selectStudioEngine('chatterbox')">
+            <span class="ep-dot" style="background:#059669"></span>
+            Chatterbox
+            <span class="ep-tag" style="background:#059669">BEST</span>
+          </button>
+          <button class="epill" id="pill-f5" style="--ep-color:#7c3aed" onclick="selectStudioEngine('f5')">
+            <span class="ep-dot" style="background:#7c3aed"></span>
+            F5-TTS
+            <span class="ep-tag" style="background:#7c3aed">CLONE</span>
+          </button>
+          <button class="epill" id="pill-fish" style="--ep-color:#0ea5e9" onclick="selectStudioEngine('fish')">
+            <span class="ep-dot" style="background:#0ea5e9"></span>
+            Fish-Speech
+            <span class="ep-tag" style="background:#0ea5e9">NEW</span>
+          </button>
+        </div>
+      </div>
+      <div class="engine-divider"></div>
+      <div class="engine-group">
+        <div class="engine-group-label">Qwen3-TTS · nécessite chargement</div>
+        <div class="engine-pills-row">
+          <button class="epill" id="pill-clone" style="--ep-color:#8b5cf6" onclick="selectStudioEngine('clone')">
+            <span class="ep-dot" style="background:#8b5cf6"></span>
+            Clone
+          </button>
+          <button class="epill" id="pill-custom" style="--ep-color:#8b5cf6" onclick="selectStudioEngine('custom')">
+            <span class="ep-dot" style="background:#8b5cf6"></span>
+            Custom
+          </button>
+          <button class="epill" id="pill-design" style="--ep-color:#8b5cf6" onclick="selectStudioEngine('design')">
+            <span class="ep-dot" style="background:#8b5cf6"></span>
+            Voice Design
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- Inner tab bar (hidden, kept for JS compat) -->
+    <div class="inner-tab-bar">
+      <button class="inner-tab active" data-itab="fr" onclick="switchInnerTab('fr')">🇫🇷 Voix FR</button>
+      <button class="inner-tab" data-itab="qwen" onclick="switchInnerTab('qwen')">⚡ Qwen3-TTS</button>
+    </div>
+
+    <!-- ── Panel Voix Françaises ── -->
+    <div id="innerPanelFR">
+    <!-- Kokoro FR -->
+    <div class="mode-row" id="rowKokoro">
+      <div class="label">Kokoro FR — voix françaises natives<span class="switch-tag" style="background:var(--accent);color:#fff">FAST</span></div>
+      <div class="row">
+        <select id="kokoroVoice" style="background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;flex:1;max-width:220px">
+          <option value="ff_siwis">Siwis — Femme FR ★</option>
+          <option value="af_heart">Heart — Femme EN</option>
+          <option value="bm_george">George — Homme EN (UK)</option>
+          <option value="am_echo">Echo — Homme EN</option>
+        </select>
+        <button class="play-btn" onclick="generateKokoro()" title="Générer">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- Chatterbox -->
+    <div class="mode-row" id="rowChatterbox">
+      <div class="label">Chatterbox — clonage zero-shot (ResembleAI)<span class="switch-tag" style="background:#059669;color:#fff">BEST</span></div>
+      <div class="row">
+        <label style="font-size:11px;color:var(--dim)">Réf :</label>
+        <input type="file" id="cbRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;max-width:180px">
+        <label style="font-size:11px;color:var(--dim)">Exag</label>
+        <input type="range" id="cbExag" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('cbExagVal').textContent=this.value">
+        <span id="cbExagVal" style="font-size:11px;color:var(--dim);min-width:24px">0.5</span>
+        <button class="play-btn" onclick="generateChatterbox()" title="Générer">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- F5-TTS FR -->
+    <div class="mode-row" id="rowF5">
+      <div class="label">F5-TTS FR — clonage vocal français<span class="switch-tag" style="background:#7c3aed;color:#fff">CLONE</span></div>
+      <div class="row">
+        <label style="font-size:11px;color:var(--dim);flex:1">Référence audio (optionnel) :</label>
+        <input type="file" id="f5RefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;max-width:200px">
+        <button class="play-btn" onclick="generateF5()" title="Générer">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- Fish-Speech -->
+    <div class="mode-row" id="rowFish">
+      <div class="label">Fish-Speech 1.5 — voice cloning multilingue<span class="switch-tag" style="background:#0ea5e9;color:#fff">NEW</span></div>
+      <div class="row">
+        <label style="font-size:11px;color:var(--dim)">Réf :</label>
+        <input type="file" id="fishRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;max-width:180px">
+        <label style="font-size:11px;color:var(--dim)">Texte réf :</label>
+        <input type="text" id="fishRefText" placeholder="Transcription du clip..." style="font-size:11px;flex:3;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:4px 6px">
+        <button class="play-btn" onclick="generateFish()" title="Générer">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+        </button>
+      </div>
+    </div>
+    </div><!-- /#innerPanelFR -->
+
+    <!-- ── Panel Qwen3-TTS ── -->
+    <div id="innerPanelQwen" style="display:none">
+
+    <!-- Qwen3 controls bar -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:2px">
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:140px">
+        <label style="font-size:11px;color:var(--dim);white-space:nowrap">🌐 Langue</label>
+        <select id="langSelVis" onchange="$('langSel').value=this.value"
+          style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:12px">
+          <option value="French">French 🇫🇷</option>
+          <option value="English">English 🇬🇧</option>
+          <option value="Chinese">Chinese 🇨🇳</option>
+          <option value="Japanese">Japanese 🇯🇵</option>
+          <option value="Korean">Korean 🇰🇷</option>
+          <option value="German">German 🇩🇪</option>
+          <option value="Spanish">Spanish 🇪🇸</option>
+          <option value="Portuguese">Portuguese 🇵🇹</option>
+          <option value="Russian">Russian 🇷🇺</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;color:var(--dim);white-space:nowrap">⚙️ Modèle</label>
+        <select id="modelSelVis" onchange="onQwenModelChange(this.value)"
+          style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:12px">
+        </select>
+        <button id="loadBtnVis" onclick="loadModel()" style="padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Load</button>
+      </div>
     </div>
 
     <!-- Clone -->
@@ -785,7 +1088,7 @@ body {
         <span class="rec-time" id="recTime"></span>
         <span class="rec-status" id="recStatus"></span>
         <div class="preset-row" id="presetRow"></div>
-        <button class="play-btn" onclick="generate('voice_clone')" title="Generate">
+        <button class="play-btn" onclick="event.stopPropagation();generate('voice_clone')" title="Generate">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
       </div>
@@ -811,7 +1114,7 @@ body {
         <select class="sm-sel" id="speakerId" style="flex:1">
           <option value="">Select speaker...</option>
         </select>
-        <button class="play-btn" onclick="generate('custom')" title="Generate">
+        <button class="play-btn" onclick="event.stopPropagation();generate('custom')" title="Generate">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
       </div>
@@ -829,20 +1132,19 @@ body {
         <textarea class="voice-in" id="voiceInstr" rows="1"
           placeholder="e.g. warm, calm female narrator…"
           oninput="autoGrow(this)">A warm, calm narrator with a clear and engaging delivery.</textarea>
-        <button class="play-btn" onclick="generate('voice_design')" title="Generate">
+        <button class="play-btn" onclick="event.stopPropagation();generate('voice_design')" title="Generate">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
       </div>
     </div>
-    <!-- Narrateur FR (XTTS) -->
-    <div class="mode-row" id="rowXtts" style="display:none">
-      <div class="label">Narrateur FR — voix française entraînée (XTTS)<span class="switch-tag">OFFLINE</span></div>
-      <div class="row">
-        <span style="font-size:11px;color:var(--dim);flex:1">Voix de narrateur français, optimisée pour les livres audio.</span>
-        <button class="play-btn" onclick="generateXtts()" title="Générer">
-          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
-        </button>
-      </div>
+    </div><!-- /#innerPanelQwen -->
+
+    <!-- Central generate button (FR engines) -->
+    <div class="studio-gen-row" id="studioGenRow">
+      <button class="gen-btn" id="genBtn" onclick="generateCurrent()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/></svg>
+        Générer
+      </button>
     </div>
 
     <!-- Messages -->
@@ -885,6 +1187,78 @@ body {
       </label>
       <button class="parse-btn" onclick="parseBook()">Détecter les chapitres</button>
       <span id="bookInfo" class="book-hint"></span>
+    </div>
+    <!-- Book voice selector -->
+    <div class="bvs-wrap">
+      <div class="bvs-label">Voix pour le livre</div>
+      <div class="bvs-tabs">
+        <button class="bvs-tab" onclick="switchBookEngine('kokoro')">🇫🇷 Kokoro FR</button>
+        <button class="bvs-tab active" onclick="switchBookEngine('qwen_design')">⚡ Voice Design</button>
+        <button class="bvs-tab" onclick="switchBookEngine('fish')">🐟 Fish-Speech</button>
+        <button class="bvs-tab" onclick="switchBookEngine('chatterbox')">🎤 Chatterbox</button>
+        <button class="bvs-tab" onclick="switchBookEngine('f5')">🟣 F5-TTS</button>
+        <button class="bvs-tab" onclick="switchBookEngine('qwen_custom')">⚡ Qwen3 Custom</button>
+        <button class="bvs-tab" onclick="switchBookEngine('qwen_clone')">⚡ Qwen3 Clone</button>
+      </div>
+      <div class="bvs-panel" id="bvs-kokoro" style="display:none">
+        <span style="font-size:11px;color:var(--dim)">Voix :</span>
+        <select id="bookKokoroVoice" class="bvs-select" style="max-width:220px">
+          <option value="ff_siwis">Siwis — Femme FR ★</option>
+          <option value="af_heart">Heart — Femme EN</option>
+          <option value="bm_george">George — Homme EN (UK)</option>
+          <option value="am_echo">Echo — Homme EN</option>
+        </select>
+      </div>
+      <div class="bvs-panel" id="bvs-qwen_design" style="flex-direction:column;gap:6px">
+        <div style="display:flex;gap:6px;align-items:center;width:100%">
+          <span style="font-size:11px;color:var(--dim);flex-shrink:0">Langue :</span>
+          <select id="bookQwenLangVD" class="bvs-select" style="max-width:110px">
+            <option selected>French</option><option>English</option><option>Chinese</option><option>German</option><option>Spanish</option>
+          </select>
+        </div>
+        <textarea id="bookVoiceInstr" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;resize:none;outline:none">A warm, calm narrator with a clear and engaging delivery.</textarea>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+          <span style="font-size:11px;color:var(--dim);flex-shrink:0">Graine vocale :</span>
+          <input id="bookSeedIn" type="number" placeholder="auto" style="width:100px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:12px;font-family:monospace">
+          <span id="bookSeedDisplay" style="font-size:11px;color:var(--dim);font-family:monospace"></span>
+          <span style="font-size:10px;color:var(--dimmer)">← même valeur = même voix à chaque fois</span>
+        </div>
+      </div>
+      <div class="bvs-panel" id="bvs-fish" style="display:none">
+        <span style="font-size:11px;color:var(--dim)">Référence :</span>
+        <input type="file" id="bookFishRef" accept="audio/*" class="bvs-file" onchange="bookFishRefFile=this.files[0]">
+        <span style="font-size:11px;color:var(--dim)">Texte réf :</span>
+        <input type="text" id="bookFishRefText" placeholder="Transcription..." style="font-size:11px;flex:3;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:3px 6px;max-width:220px">
+      </div>
+      <div class="bvs-panel" id="bvs-chatterbox" style="display:none">
+        <span style="font-size:11px;color:var(--dim)">Référence :</span>
+        <input type="file" id="bookCbRef" accept="audio/*" class="bvs-file" onchange="bookCbRefFile=this.files[0]">
+        <span style="font-size:11px;color:var(--dim)">Exag</span>
+        <input type="range" id="bookCbExag" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('bookCbExagVal').textContent=this.value">
+        <span id="bookCbExagVal" style="font-size:11px;color:var(--dim);min-width:24px">0.5</span>
+      </div>
+      <div class="bvs-panel" id="bvs-f5" style="display:none">
+        <span style="font-size:11px;color:var(--dim)">Référence (optionnel) :</span>
+        <input type="file" id="bookF5Ref" accept="audio/*" class="bvs-file" onchange="bookF5RefFile=this.files[0]">
+      </div>
+      <div class="bvs-panel" id="bvs-qwen_custom" style="display:none">
+        <span style="font-size:11px;color:var(--dim)">Voix :</span>
+        <select id="bookQwenSpeaker" class="bvs-select" style="max-width:200px">
+          <option value="Aiden">Aiden — English Male</option>
+        </select>
+        <span style="font-size:11px;color:var(--dim)">Langue :</span>
+        <select id="bookQwenLangC" class="bvs-select" style="max-width:110px">
+          <option>French</option><option selected>English</option><option>Chinese</option><option>German</option><option>Spanish</option>
+        </select>
+      </div>
+      <div class="bvs-panel" id="bvs-qwen_clone" style="display:none">
+        <span style="font-size:11px;color:var(--dim)">Référence :</span>
+        <input type="file" id="bookQwenRef" accept="audio/*" class="bvs-file" onchange="bookQwenRefFile=this.files[0]">
+        <span style="font-size:11px;color:var(--dim)">Langue :</span>
+        <select id="bookQwenLangK" class="bvs-select" style="max-width:110px">
+          <option>French</option><option selected>English</option><option>Chinese</option><option>German</option><option>Spanish</option>
+        </select>
+      </div>
     </div>
     <div id="chapterList" class="chapter-list" style="display:none"></div>
     <div class="book-gen-row" id="bookGenRow" style="display:none">
@@ -958,9 +1332,9 @@ body {
       <div class="s-row">
         <label>Temperature</label>
         <div class="s-slider">
-          <input type="range" id="tempSl" min="0.1" max="2.0" step="0.05" value="0.9"
+          <input type="range" id="tempSl" min="0.1" max="2.0" step="0.05" value="0.7"
             oninput="$('tempV').textContent=this.value">
-          <span class="sv" id="tempV">0.9</span>
+          <span class="sv" id="tempV">0.7</span>
         </div>
       </div>
       <div class="s-row">
@@ -1033,6 +1407,12 @@ let bookChapters = [];
 let bookCancelled = false;
 let bookStartTime = 0;
 let bookChaptersDone = 0;
+let bookEngine = 'qwen_design';
+let bookCbRefFile = null;
+let bookF5RefFile = null;
+let bookQwenRefFile = null;
+let bookFishRefFile = null;
+let bookSeed = null; // fixed seed for voice consistency across all chunks
 
 const defaultSpeakers = [
   { id: 'Vivian',   desc: 'Chinese — Bright young female' },
@@ -1063,6 +1443,7 @@ window.addEventListener('load', async () => {
   initTheme();
   autoGrow($('voiceInstr'));
   updateEstimation();
+  selectStudioEngine('kokoro');
   await fetchStatus();
   if (!loadedModel && availableModels.length > 0) {
     // Prefer CustomVoice as default (richer demo), fall back to first available
@@ -1165,8 +1546,8 @@ async function selectPresetRef(id) {
     $('refTextIn').value = d.ref_text || '';
     autoGrow($('refTextIn'));
     updatePresetButtons();
-  } catch {
-    showMsg('err', 'Failed to load preset audio.');
+  } catch (e) {
+    console.warn('Preset audio not available:', e);
   }
 }
 
@@ -1199,6 +1580,7 @@ async function fetchStatus() {
   try {
     const d = await fetch('/status').then(r => r.json());
     applyAvailableModels(d.available_models || []);
+    syncQwenModelSel(d.available_models || []);
     if (d.loaded && d.model) {
       loadedModel = d.model;
       $('modelSel').value = d.model;
@@ -1206,13 +1588,101 @@ async function fetchStatus() {
     populateSpeakers(d.speakers || []);
     renderPresetRefs(d.preset_refs || []);
     setPill(d.loaded ? 'loaded' : 'off', d.loaded ? 'ready' : 'not loaded');
-    // Show XTTS row if narrator server is running
-    $('rowXtts').style.display = d.xtts_available ? '' : 'none';
-    if (d.xtts_available) $('rowXtts').classList.add('compatible');
+    // Kokoro + F5-TTS + Chatterbox always available
+    $('rowKokoro').classList.add('compatible');
+    $('rowF5').classList.add('compatible');
+    $('rowChatterbox').classList.add('compatible');
+    // Sync visible lang selector
+    if ($('langSelVis')) $('langSelVis').value = $('langSel').value || 'French';
+    // Update visible load button state
+    if ($('loadBtnVis') && d.loaded) $('loadBtnVis').textContent = '✓ Loaded';
+    // Default to FR tab and apply French preset
+    switchInnerTab('fr');
+    selectStudioEngine('kokoro');
   } catch { setPill('off', 'offline'); }
 }
 
-async function generateXtts() {
+function switchInnerTab(tab) {
+  document.querySelectorAll('.inner-tab').forEach(t => t.classList.toggle('active', t.dataset.itab === tab));
+  $('innerPanelFR').style.display   = tab === 'fr'   ? '' : 'none';
+  $('innerPanelQwen').style.display = tab === 'qwen' ? '' : 'none';
+  if (tab === 'fr') setFrenchPreset();
+}
+
+// ── Engine pill selector ───────────────────────────────────────────────────────
+let currentEngine = 'kokoro'; // selected studio engine
+
+const ENGINE_TO_ITAB = { kokoro:'fr', chatterbox:'fr', f5:'fr', fish:'fr', clone:'qwen', custom:'qwen', design:'qwen' };
+const ENGINE_TO_ROW  = { kokoro:'rowKokoro', chatterbox:'rowChatterbox', f5:'rowF5', fish:'rowFish' };
+const ENGINE_TO_QWEN = { clone:'voice_clone', custom:'custom', design:'voice_design' };
+
+function selectStudioEngine(engine) {
+  currentEngine = engine;
+  // Deactivate all pills
+  document.querySelectorAll('.epill').forEach(p => p.classList.remove('active'));
+  const pill = $('pill-' + engine);
+  if (pill) pill.classList.add('active');
+
+  const isFR = ENGINE_TO_ITAB[engine] === 'fr';
+
+  // Switch inner panels
+  $('innerPanelFR').style.display   = isFR   ? '' : 'none';
+  $('innerPanelQwen').style.display = !isFR  ? '' : 'none';
+
+  // Show/hide generate button (FR: show big btn; Qwen: use inline play btns)
+  const genRow = $('studioGenRow');
+  if (genRow) genRow.style.display = isFR ? '' : 'none';
+
+  if (isFR) {
+    // Show only the active FR row
+    document.querySelectorAll('#innerPanelFR .mode-row').forEach(r => r.classList.remove('eng-active'));
+    const rowId = ENGINE_TO_ROW[engine];
+    if (rowId && $(rowId)) $(rowId).classList.add('eng-active');
+  } else {
+    // Activate Qwen mode
+    const qwenMode = ENGINE_TO_QWEN[engine];
+    if (qwenMode) onModeRowClick(qwenMode);
+  }
+}
+
+async function generateCurrent() {
+  switch (currentEngine) {
+    case 'kokoro':     await generateKokoro();     break;
+    case 'chatterbox': await generateChatterbox();  break;
+    case 'f5':         await generateF5();           break;
+    case 'fish':       await generateFish();         break;
+    default: break;
+  }
+}
+
+function onQwenModelChange(val) {
+  $('modelSel').value = val;
+}
+
+function syncQwenModelSel(models) {
+  const sel = $('modelSelVis');
+  if (!sel) return;
+  sel.innerHTML = '';
+  models.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m;
+    const label = m.includes('1.7B') ? '1.7B ★' : m.includes('0.6B') ? '0.6B Fast' : m.split('/').pop();
+    o.textContent = label;
+    sel.appendChild(o);
+  });
+  // Sync with hidden selector
+  if ($('modelSel').value) sel.value = $('modelSel').value;
+}
+
+function setFrenchPreset() {
+  const t = $('tempSl'); if (t) { t.value = 0.7; $('tempV').textContent = '0.7'; }
+  const k = $('topkSl'); if (k) { k.value = 30;  $('topkV').textContent = '30';  }
+  const r = $('repSl');  if (r) { r.value = 1.1;  $('repV').textContent = '1.10'; }
+  showMsg('ok', 'Preset FR appliqué — Temp 0.7 · Top-K 30 · Rep 1.1');
+  setTimeout(hideMsg, 2000);
+}
+
+async function generateF5() {
   if (busy) return;
   const text = $('textIn').value.trim();
   if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
@@ -1228,8 +1698,115 @@ async function generateXtts() {
   try {
     const fd = new FormData();
     fd.append('text', text);
-    const res = await fetch('/generate/xtts_narrator', { method: 'POST', body: fd });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur XTTS'); }
+    const refFile = $('f5RefWav').files[0];
+    if (refFile) fd.append('ref_wav', refFile);
+    const res = await fetch('/generate/f5_fr', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur F5-TTS'); }
+    const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+    const genSecs = (performance.now() - t0) / 1000;
+    setPlayer(blob);
+    $('player').play().catch(() => {});
+    pb.classList.remove('spin'); pb.style.width = '100%';
+    $('waveInd').classList.add('off');
+    $('mClient').textContent = genSecs.toFixed(1) + 's';
+  } catch(e) {
+    showMsg('err', e.message);
+    pb.classList.remove('spin'); pb.style.width = '0%';
+  }
+  busy = false; setPlayBtns(false);
+}
+
+async function generateKokoro() {
+  if (busy) return;
+  const text = $('textIn').value.trim();
+  if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
+  hideMsg();
+  busy = true; setPlayBtns(true);
+  $('results').classList.add('show');
+  $('player').parentElement.style.display = 'none';
+  $('waveInd').classList.remove('off');
+  $('pbarWrap').classList.add('show');
+  const pb = $('pbar'); pb.style.width = ''; pb.classList.add('spin');
+  resetMetrics();
+  const t0 = performance.now();
+  try {
+    const fd = new FormData();
+    fd.append('text', text);
+    fd.append('voice', $('kokoroVoice').value);
+    const res = await fetch('/generate/kokoro_fr', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Kokoro'); }
+    const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+    const genSecs = (performance.now() - t0) / 1000;
+    setPlayer(blob);
+    $('player').play().catch(() => {});
+    pb.classList.remove('spin'); pb.style.width = '100%';
+    $('waveInd').classList.add('off');
+    $('mClient').textContent = genSecs.toFixed(1) + 's';
+  } catch(e) {
+    showMsg('err', e.message);
+    pb.classList.remove('spin'); pb.style.width = '0%';
+  }
+  busy = false; setPlayBtns(false);
+}
+
+async function generateChatterbox() {
+  if (busy) return;
+  const text = $('textIn').value.trim();
+  if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
+  hideMsg();
+  busy = true; setPlayBtns(true);
+  $('results').classList.add('show');
+  $('player').parentElement.style.display = 'none';
+  $('waveInd').classList.remove('off');
+  $('pbarWrap').classList.add('show');
+  const pb = $('pbar'); pb.style.width = ''; pb.classList.add('spin');
+  resetMetrics();
+  const t0 = performance.now();
+  try {
+    const fd = new FormData();
+    fd.append('text', text);
+    fd.append('exaggeration', $('cbExag').value);
+    fd.append('cfg_weight', '0.5');
+    const refFile = $('cbRefWav').files[0];
+    if (refFile) fd.append('ref_wav', refFile);
+    const res = await fetch('/generate/chatterbox', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Chatterbox'); }
+    const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+    const genSecs = (performance.now() - t0) / 1000;
+    setPlayer(blob);
+    $('player').play().catch(() => {});
+    pb.classList.remove('spin'); pb.style.width = '100%';
+    $('waveInd').classList.add('off');
+    $('mClient').textContent = genSecs.toFixed(1) + 's';
+  } catch(e) {
+    showMsg('err', e.message);
+    pb.classList.remove('spin'); pb.style.width = '0%';
+  }
+  busy = false; setPlayBtns(false);
+}
+
+async function generateFish() {
+  if (busy) return;
+  const text = $('textIn').value.trim();
+  if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
+  hideMsg();
+  busy = true; setPlayBtns(true);
+  $('results').classList.add('show');
+  $('player').parentElement.style.display = 'none';
+  $('waveInd').classList.remove('off');
+  $('pbarWrap').classList.add('show');
+  const pb = $('pbar'); pb.style.width = ''; pb.classList.add('spin');
+  resetMetrics();
+  const t0 = performance.now();
+  try {
+    const fd = new FormData();
+    fd.append('text', text);
+    const refFile = $('fishRefWav').files[0];
+    if (refFile) fd.append('ref_wav', refFile);
+    const refText = $('fishRefText').value.trim();
+    if (refText) fd.append('ref_text', refText);
+    const res = await fetch('/generate/fish', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Fish-Speech'); }
     const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
     const genSecs = (performance.now() - t0) / 1000;
     setPlayer(blob);
@@ -1246,7 +1823,13 @@ async function generateXtts() {
 
 async function loadModel() {
   const btn = $('loadBtn');
+  const btnVis = $('loadBtnVis');
+  // Sync model selection from visible selector if on Qwen tab
+  if ($('modelSelVis') && $('innerPanelQwen').style.display !== 'none') {
+    $('modelSel').value = $('modelSelVis').value;
+  }
   btn.disabled = true; btn.textContent = 'Loading...';
+  if (btnVis) { btnVis.disabled = true; btnVis.textContent = 'Loading...'; }
   loadingModel = $('modelSel').value;
   loadedModel  = null;
   setPlayBtns(true);
@@ -1260,6 +1843,7 @@ async function loadModel() {
       loadingModel = null;
       lastRtf = loadedModel?.includes('1.7B') ? 3.5 : 4.0; // 0.6B default
       setPill('loaded', 'ready');
+      if ($('loadBtnVis')) { $('loadBtnVis').disabled = false; $('loadBtnVis').textContent = '✓ Loaded'; }
       updateEstimation();
       fetchStatus();
     } else {
@@ -1977,6 +2561,24 @@ function switchTab(tab) {
   $('panelBook').style.display = tab === 'book' ? '' : 'none';
 }
 
+function switchBookEngine(engine) {
+  bookEngine = engine;
+  const engines = ['kokoro', 'qwen_design', 'fish', 'chatterbox', 'f5', 'qwen_custom', 'qwen_clone'];
+  engines.forEach(e => { $(`bvs-${e}`).style.display = e === engine ? '' : 'none'; });
+  document.querySelectorAll('.bvs-tab').forEach((btn, i) => {
+    btn.classList.toggle('active', engines[i] === engine);
+  });
+  // Sync speaker list from TTS panel when switching to Qwen3 Custom
+  if (engine === 'qwen_custom') {
+    const src = $('speakerId');
+    const dst = $('bookQwenSpeaker');
+    if (src.options.length > 1 && dst.options.length <= 1) {
+      dst.innerHTML = src.innerHTML;
+      dst.value = src.value;
+    }
+  }
+}
+
 // ── Estimation ────────────────────────────────────────────────────────────────
 function updateEstimation(actualGenSecs, actualAudioSecs) {
   const text  = $('textIn').value || '';
@@ -2021,14 +2623,29 @@ function formatChapterTitle(title) {
 
 function isChapterHeading(line) {
   const t = line.trim();
-  if (!t || t.length > 80) return false;
-  if (/^(chapter|chapitre|kapitel|capítulo|capitolo)\s+/i.test(t)) return true;
-  if (/^(part|partie|teil|parte)\s+/i.test(t)) return true;
-  if (/^[IVXLCDMivxlcdm]+\.?\s*$/.test(t) && t.length < 8) return true;
-  if (/^\d{1,2}\.?\s*$/.test(t)) return true;
-  if (t.length >= 4 && t.length <= 60 && t === t.toUpperCase() &&
-      /[A-Z]{3,}/.test(t) && !/^\d/.test(t)) return true;
+  if (!t || t.length > 120) return false;
+  // Explicit keywords
+  if (/^(chapter|chapitre|kapitel|cap[íi]tulo|capitolo)\s+/i.test(t)) return true;
+  if (/^(part|partie|teil|parte)\s+\S/i.test(t)) return true;
+  // Standalone section words
+  if (/^(prologue|épilogue|epilogue|interlude|intermède|prélude|prelude|conclusion|introduction)\s*$/i.test(t)) return true;
+  // Chapter + spelled-out number (EN & FR)
+  if (/^(chapter|chapitre)\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|un|deux|trois|quatre|cinq|sept|huit|neuf|dix|onze|douze|treize|quatorze|quinze|seize|vingt|trente)\b/i.test(t)) return true;
+  // Roman numerals alone
+  if (/^[IVXLCDMivxlcdm]+\.?\s*$/.test(t) && t.length < 10) return true;
+  // 1-3 digit number alone (possibly with dot)
+  if (/^\d{1,3}\.?\s*$/.test(t)) return true;
+  // Number + separator + title: "1. Title", "1 - Title", "1 – Title"
+  if (/^\d{1,3}[\.\-–—]\s*\S/.test(t) && t.length <= 80) return true;
+  // ALL CAPS line (classic chapter heading in plain-text novels)
+  if (t.length >= 3 && t.length <= 80 && t === t.toUpperCase() &&
+      /[A-Z]{3,}/.test(t) && !/^\d/.test(t) && !/^[^A-Z]+$/.test(t)) return true;
   return false;
+}
+
+function isSectionSeparator(line) {
+  const t = line.trim();
+  return /^[\-\*~_=]{3,}$/.test(t) || /^\*\s*\*\s*\*$/.test(t) || /^#\s*#\s*#$/.test(t);
 }
 
 async function loadBookFile(input) {
@@ -2036,11 +2653,38 @@ async function loadBookFile(input) {
   if (!file) return;
   $('bookInfo').textContent = 'Extraction en cours...';
   try {
+    if (file.name.endsWith('.epub')) {
+      const chapters = await extractEpubText(file);
+      if (chapters.length > 0) {
+        bookChapters = chapters.map((c, i) => {
+          const wordCount = c.text.split(/\s+/).filter(Boolean).length;
+          return {
+            index: i,
+            title: c.title || `Section ${i + 1}`,
+            text: c.text,
+            isContent: !isNonContent(c.title || '') && wordCount >= 20,
+            status: 'pending', blob: null,
+          };
+        });
+        // Auto-uncheck front matter (sections before first real chapter)
+        const firstRealIdx = bookChapters.findIndex(ch =>
+          /^(chapter|chapitre|part[ie]*|prologue|épilogue|\d+\.?\s*$|[IVX]{1,6}\.?\s*$)/i.test(ch.title.trim())
+        );
+        if (firstRealIdx > 0) {
+          bookChapters.slice(0, firstRealIdx).forEach(ch => { ch.isContent = false; });
+        }
+        // Reconstruct readable text for the textarea
+        $('bookText').value = chapters.map(c =>
+          (c.title ? c.title + '\n' + '─'.repeat(Math.min(c.title.length, 40)) + '\n\n' : '') + c.text
+        ).join('\n\n---\n\n');
+        renderChapterList();
+        $('bookInfo').textContent = `${bookChapters.length} chapitres détectés (EPUB natif)`;
+        return;
+      }
+    }
     let text = '';
     if (file.name.endsWith('.pdf')) {
       text = await extractPdfText(file);
-    } else if (file.name.endsWith('.epub')) {
-      text = await extractEpubText(file);
     } else {
       text = await file.text();
     }
@@ -2113,17 +2757,26 @@ async function extractEpubText(file) {
     if (manifest[id]) spine.push(manifest[id]);
   });
 
-  let fullText = '';
+  // Each spine item → structured chapter object
+  const chapters = [];
   for (const href of spine) {
     const f = zip.file(href) || zip.file(href.replace(/^.*\//, ''));
     if (!f) continue;
     const html = await f.async('text');
     const doc  = parser.parseFromString(html, 'text/html');
     doc.querySelectorAll('script,style,nav').forEach(el => el.remove());
-    const body = doc.body?.innerText || doc.body?.textContent || '';
-    if (body.trim()) fullText += body.trim() + '\n\n';
+
+    // Extract title from first heading or <title>
+    const hTag = doc.querySelector('h1, h2, h3');
+    const titleTag = doc.querySelector('title');
+    let title = (hTag?.textContent || titleTag?.textContent || '').trim();
+    title = title.replace(/^\d+[\.\-]\s*/, '').slice(0, 120).trim();
+
+    const body = doc.body?.textContent || '';
+    const text = body.replace(/\s{3,}/g, '\n\n').trim();
+    if (text.length > 100) chapters.push({ title, text });
   }
-  return fullText.trim();
+  return chapters; // structured array
 }
 
 function parseBook() {
@@ -2133,13 +2786,30 @@ function parseBook() {
   const lines = raw.split('\n');
   const sections = [];
   let current = null;
+  let sepCounter = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
     const prevEmpty = i === 0 || lines[i-1].trim() === '';
     const nextEmpty = i >= lines.length - 1 || lines[i+1].trim() === '';
 
-    if (trimmed && isChapterHeading(trimmed) && (prevEmpty || nextEmpty)) {
+    // Section separator lines (---, ***, * * *)
+    if (isSectionSeparator(trimmed)) {
+      if (current && current.lines.join('\n').trim().length > 50) sections.push(current);
+      sepCounter++;
+      current = { title: `§${sepCounter}`, lines: [], isSep: true };
+      continue;
+    }
+
+    // Chapter heading — relax condition for strong patterns (numbered, explicit keywords)
+    const isStrong = trimmed && (
+      /^(chapter|chapitre|part[ie]?|partie)\s+/i.test(trimmed) ||
+      /^\d{1,3}[\.\-–—]\s*\S/.test(trimmed) ||
+      /^\d{1,3}\.?\s*$/.test(trimmed) ||
+      /^[IVXLCDMivxlcdm]+\.?\s*$/.test(trimmed)
+    );
+
+    if (trimmed && isChapterHeading(trimmed) && (prevEmpty || nextEmpty || isStrong)) {
       if (current && current.lines.join('\n').trim().length > 50)
         sections.push(current);
       current = { title: trimmed, lines: [] };
@@ -2251,10 +2921,19 @@ function splitIntoChunks(text, maxChars = 4000) {
 
 async function generateBook() {
   if (busy || bookBusy) { showMsg('err', 'Une génération est déjà en cours.'); return; }
-  if (!loadedModel) { showMsg('err', 'Charge un modèle d\'abord (onglet TTS).'); return; }
+  const needsQwen = bookEngine === 'qwen_custom' || bookEngine === 'qwen_clone' || bookEngine === 'qwen_design';
+  if (needsQwen && !loadedModel) { showMsg('err', 'Charge un modèle Qwen3 d\'abord (onglet TTS).'); return; }
+  if (bookEngine === 'qwen_design' && loadedModel && !loadedModel.includes('VoiceDesign')) {
+    showMsg('err', 'Voice Design nécessite le modèle 1.7B-VoiceDesign (onglet TTS → Qwen3-TTS → Voice Design → LOAD).'); return;
+  }
 
   const toGen = bookChapters.filter(c => c.isContent && c.status !== 'done');
   if (!toGen.length) return;
+
+  // Generate a fixed seed for voice consistency across all chunks/chapters
+  const seedInput = parseInt($('bookSeedIn')?.value);
+  bookSeed = isNaN(seedInput) ? Math.floor(Math.random() * 2147483647) : seedInput;
+  if ($('bookSeedDisplay')) $('bookSeedDisplay').textContent = `seed: ${bookSeed}`;
 
   bookBusy = true; bookCancelled = false;
   bookStartTime = Date.now(); bookChaptersDone = 0;
@@ -2358,10 +3037,8 @@ async function retryChapter(index) {
       const blob = await retryableGenerateChunk(chunk);
       if (blob) parts.push(blob);
     }
-    if (parts.length) {
-      ch.blob = parts.length === 1 ? parts[0] : await concatWavBlobs(parts);
-      ch.status = 'done';
-    } else { ch.status = 'error'; }
+    if (parts.length) { ch.blob = parts.length === 1 ? parts[0] : await concatWavBlobs(parts); ch.status = 'done'; }
+    else { ch.status = 'error'; }
   } catch { ch.status = 'error'; }
   bookBusy = false;
   renderChapterList();
@@ -2383,32 +3060,83 @@ async function mergeAllChapters() {
 }
 
 async function generateChunk(text) {
-  const isVD = loadedModel?.includes('VoiceDesign');
-  const isCV = loadedModel?.includes('CustomVoice');
-  const mode = isVD ? 'voice_design' : isCV ? 'custom' : 'voice_clone';
-
-  const fd = new FormData();
-  fd.append('text',               text);
-  fd.append('mode',               mode);
-  fd.append('language',           $('langSel').value);
-  fd.append('temperature',        $('tempSl').value);
-  fd.append('top_k',              $('topkSl').value);
-  fd.append('repetition_penalty', $('repSl').value);
-
-  if (mode === 'voice_clone') {
-    if (presetRefId) fd.append('ref_preset', presetRefId);
-    else if (refFile) fd.append('ref_audio', refFile);
-    fd.append('xvec_only', xvecOnly ? 'true' : 'false');
-    if (!xvecOnly) fd.append('ref_text', $('refTextIn').value);
-  } else if (mode === 'custom') {
-    fd.append('speaker',  $('speakerId').value);
-    fd.append('instruct', $('customInstr').value);
-  } else {
-    fd.append('instruct', $('voiceInstr').value);
+  if (bookEngine === 'kokoro') {
+    const fd = new FormData();
+    fd.append('text', text);
+    fd.append('voice', $('bookKokoroVoice').value);
+    const res = await fetch('/generate/kokoro_fr', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Kokoro'); }
+    return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
   }
 
+  if (bookEngine === 'fish') {
+    const fd = new FormData();
+    fd.append('text', text);
+    if (bookFishRefFile) fd.append('ref_wav', bookFishRefFile);
+    const fishRefText = $('bookFishRefText').value.trim();
+    if (fishRefText) fd.append('ref_text', fishRefText);
+    const res = await fetch('/generate/fish', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Fish-Speech'); }
+    return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+  }
+
+  if (bookEngine === 'chatterbox') {
+    const fd = new FormData();
+    fd.append('text', text);
+    if (bookCbRefFile) fd.append('ref_audio', bookCbRefFile);
+    fd.append('exaggeration', $('bookCbExag').value);
+    const res = await fetch('/generate/chatterbox', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Chatterbox'); }
+    const d = await res.json();
+    const bytes = Uint8Array.from(atob(d.audio_b64), c => c.charCodeAt(0));
+    return new Blob([bytes], { type: 'audio/wav' });
+  }
+
+  if (bookEngine === 'f5') {
+    const fd = new FormData();
+    fd.append('text', text);
+    if (bookF5RefFile) fd.append('ref_audio', bookF5RefFile);
+    const res = await fetch('/generate/f5_fr', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur F5'); }
+    return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+  }
+
+  if (bookEngine === 'qwen_design') {
+    const fd = new FormData();
+    fd.append('text', text);
+    fd.append('mode', 'voice_design');
+    fd.append('language', $('bookQwenLangVD').value);
+    fd.append('temperature', '0.7');
+    fd.append('top_k', '30');
+    fd.append('repetition_penalty', '1.1');
+    fd.append('instruct', $('bookVoiceInstr').value);
+    if (bookSeed !== null) fd.append('seed', bookSeed);
+    const res = await fetch('/generate', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur VoiceDesign'); }
+    const d = await res.json();
+    if (d.metrics?.rtf > 0) lastRtf = d.metrics.rtf;
+    const bytes = Uint8Array.from(atob(d.audio_b64), c => c.charCodeAt(0));
+    return new Blob([bytes], { type: 'audio/wav' });
+  }
+
+  // qwen_custom or qwen_clone → /generate endpoint
+  const isCustom = bookEngine === 'qwen_custom';
+  const fd = new FormData();
+  fd.append('text', text);
+  fd.append('mode', isCustom ? 'custom' : 'voice_clone');
+  fd.append('language', isCustom ? $('bookQwenLangC').value : $('bookQwenLangK').value);
+  fd.append('temperature', '0.7');
+  fd.append('top_k', '30');
+  fd.append('repetition_penalty', '1.1');
+  if (bookSeed !== null) fd.append('seed', bookSeed);
+  if (isCustom) {
+    fd.append('speaker', $('bookQwenSpeaker').value);
+  } else {
+    if (bookQwenRefFile) fd.append('ref_audio', bookQwenRefFile);
+    fd.append('xvec_only', 'false');
+  }
   const res = await fetch('/generate', { method: 'POST', body: fd });
-  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Failed'); }
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Qwen3'); }
   const d = await res.json();
   if (d.metrics?.rtf > 0) lastRtf = d.metrics.rtf;
   const bytes = Uint8Array.from(atob(d.audio_b64), c => c.charCodeAt(0));
