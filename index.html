@@ -1054,9 +1054,21 @@ select option, select optgroup {
     <!-- Chatterbox -->
     <div class="mode-row" id="rowChatterbox">
       <div class="label"><span id="engLblChatterbox">Chatterbox — clonage zero-shot (ResembleAI)</span><span class="switch-tag" style="background:#059669;color:#fff">BEST</span></div>
-      <div class="row">
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        <label style="font-size:11px;color:var(--dim)">🌍</label>
+        <select id="cbLang" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px">
+          <option value="fr">🇫🇷 Français</option>
+          <option value="en" selected>🇬🇧 English</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="zh">🇨🇳 中文</option>
+          <option value="ja">🇯🇵 日本語</option>
+          <option value="pt">🇧🇷 Português</option>
+          <option value="it">🇮🇹 Italiano</option>
+          <option value="ar">🇸🇦 العربية</option>
+        </select>
         <label style="font-size:11px;color:var(--dim)">Réf :</label>
-        <input type="file" id="cbRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;max-width:180px">
+        <input type="file" id="cbRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;max-width:160px">
         <label style="font-size:11px;color:var(--dim)" title="Intensité émotionnelle de la voix (0=neutre, 1=expressif)">Exag</label>
         <input type="range" id="cbExag" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('cbExagVal').textContent=parseFloat(this.value).toFixed(2)">
         <span id="cbExagVal" style="font-size:11px;color:var(--dim);min-width:32px">0.50</span>
@@ -1077,10 +1089,22 @@ select option, select optgroup {
     <div class="mode-row" id="rowF5">
       <div class="label"><span id="engLblF5">F5-TTS FR — clonage vocal français</span><span class="switch-tag" style="background:#7c3aed;color:#fff">CLONE</span></div>
       <div class="row" style="flex-wrap:wrap;gap:6px">
+        <label style="font-size:11px;color:var(--dim)">🌍</label>
+        <select id="f5Lang" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px">
+          <option value="fr" selected>🇫🇷 Français</option>
+          <option value="en">🇬🇧 English</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="zh">🇨🇳 中文</option>
+          <option value="ja">🇯🇵 日本語</option>
+          <option value="pt">🇧🇷 Português</option>
+          <option value="it">🇮🇹 Italiano</option>
+          <option value="ar">🇸🇦 العربية</option>
+        </select>
         <label style="font-size:11px;color:var(--dim);flex-shrink:0">Réf audio :</label>
-        <input type="file" id="f5RefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:120px;max-width:180px">
+        <input type="file" id="f5RefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:100px;max-width:160px">
         <label style="font-size:11px;color:var(--dim);flex-shrink:0">Texte réf :</label>
-        <input type="text" id="f5RefText" placeholder="Transcription du clip audio..." style="font-size:11px;flex:3;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:4px 6px">
+        <input type="text" id="f5RefText" placeholder="Transcription du clip audio..." style="font-size:11px;flex:3;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:4px 6px">
       </div>
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:6px">
         <label style="font-size:11px;color:var(--dim)" title="Vitesse de lecture (0.5=lent, 1=normal, 2=rapide)">Vitesse</label>
@@ -1702,6 +1726,9 @@ function setTTSLang(lang) {
   // Auto-set Qwen3 language selectors
   if ($('langSel'))    $('langSel').value    = cfg.qwen;
   if ($('langSelVis')) $('langSelVis').value = cfg.qwen;
+  // Sync Chatterbox and F5-TTS language selectors
+  if ($('cbLang'))  $('cbLang').value  = lang;
+  if ($('f5Lang'))  $('f5Lang').value  = lang;
   // Show engine compatibility note
   const note = document.getElementById('ttsLangNote');
   if (note) note.textContent = cfg.engines;

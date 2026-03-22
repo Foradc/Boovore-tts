@@ -1,24 +1,23 @@
-FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
+FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV MODEL_CACHE_SIZE=5
-ENV ACTIVE_MODELS=Qwen/Qwen3-TTS-12Hz-1.7B-Base
+# Only enable CPU-friendly engines on free HuggingFace Space
+ENV ENABLED_ENGINES=kokoro,f5
 ENV HOME=/tmp
-ENV TORCHINDUCTOR_CACHE_DIR=/tmp/torch_inductor
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv \
-    git ffmpeg libsndfile1 sox \
+    git ffmpeg libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY . /app
 
-RUN python3 -m pip install --upgrade pip \
-    && python3 -m pip install --index-url https://download.pytorch.org/whl/cu126 torch torchaudio \
-    && python3 -m pip install "faster-qwen3-tts[demo]" \
-    && python3 -m pip install -r requirements.txt
+RUN pip install --upgrade pip \
+    && pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
+    && pip install "kokoro>=0.9.4" "f5-tts>=1.1.0" \
+    && pip install fastapi "uvicorn[standard]" python-multipart soundfile numpy huggingface_hub
 
 EXPOSE 7860
-CMD ["python3", "server.py", "--host", "0.0.0.0"]
+# --no-preload: don't load Qwen3 at startup (not available on CPU)
+CMD ["python3", "server.py", "--host", "0.0.0.0", "--no-preload"]
