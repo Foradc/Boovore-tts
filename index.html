@@ -1659,6 +1659,7 @@ let bookCbRefFile = null;
 let bookF5RefFile = null;
 let bookQwenRefFile = null;
 let bookFishRefFile = null;
+let bookFishRollingRef = null;  // rolling reference: tail of last generated fish chunk
 let bookSeed = null; // fixed seed for voice consistency across all chunks
 
 const defaultSpeakers = [
@@ -3434,6 +3435,7 @@ async function generateBook() {
   if ($('bookSeedDisplay')) $('bookSeedDisplay').textContent = `seed: ${bookSeed}`;
 
   bookBusy = true; bookCancelled = false;
+  bookFishRollingRef = null;  // reset rolling reference at start of each book generation
   bookStartTime = Date.now(); bookChaptersDone = 0;
   $('bookGenBtn').disabled = true; $('bookGenBtn').style.display = 'none';
   $('bookResumeBtn').style.display = 'none';
@@ -3574,22 +3576,34 @@ async function generateChunk(rawText) {
   if (bookEngine === 'fish') {
     const fd = new FormData();
     fd.append('text', text);
-    if (bookFishRefFile) fd.append('ref_wav', bookFishRefFile);
+    // Rolling reference takes priority over static ref (voice anchoring technique)
+    if (bookFishRollingRef) {
+      fd.append('prev_wav', bookFishRollingRef, 'prev.wav');
+    } else if (bookFishRefFile) {
+      fd.append('ref_wav', bookFishRefFile);
+    }
     const fishRefText = $('bookFishRefText') ? $('bookFishRefText').value.trim() : '';
     if (fishRefText) fd.append('ref_text', fishRefText);
-    // Audiobook-optimized parameters
     fd.append('max_new_tokens', $('bookFishMaxTokens') ? $('bookFishMaxTokens').value : '4096');
     fd.append('chunk_length',   $('bookFishChunk')     ? $('bookFishChunk').value     : '400');
     fd.append('latency',        $('bookFishLatency')   ? $('bookFishLatency').value   : 'balanced');
     fd.append('normalize',      $('bookFishNorm')      ? $('bookFishNorm').checked    : true);
     fd.append('auto_split',     $('bookFishAutoSplit') ? $('bookFishAutoSplit').checked : true);
-    fd.append('temperature',    expressive ? '0.88' : '0.7');
-    fd.append('top_p',          expressive ? '0.95' : '0.8');
+    fd.append('temperature',    expressive ? '0.88' : '0.65');
+    fd.append('top_p',          expressive ? '0.92' : '0.75');
     fd.append('repetition_penalty', expressive ? '1.02' : '1.05');
-    if (bookSeed !== null) fd.append('seed', bookSeed);   // lock voice across all chapters
+    fd.append('rolling_ref_secs', '6');
+    if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate/fish', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Fish-Speech'); }
-    return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+    const audioBuffer = await res.arrayBuffer();
+    // Save tail of this chunk as rolling reference for next chapter
+    const tailB64 = res.headers.get('X-Rolling-Ref-B64');
+    if (tailB64) {
+      const tailBytes = Uint8Array.from(atob(tailB64), c => c.charCodeAt(0));
+      bookFishRollingRef = new Blob([tailBytes], { type: 'audio/wav' });
+    }
+    return new Blob([audioBuffer], { type: 'audio/wav' });
   }
 
   if (bookEngine === 'chatterbox') {
