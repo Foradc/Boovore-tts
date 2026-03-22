@@ -674,6 +674,10 @@ async def generate_f5_fr(
     text: str = Form(...),
     ref_wav: UploadFile = File(None),
     ref_text: str = Form(""),
+    speed: float = Form(1.0),
+    nfe_step: int = Form(32),
+    cross_fade_duration: float = Form(0.15),
+    seed: int = Form(None),
 ):
     ref_path = None
     cleanup_ref = False
@@ -702,7 +706,17 @@ async def generate_f5_fr(
         out_path = out_tmp.name
         out_tmp.close()
         try:
-            model.infer(ref_file=ref_path, ref_text=ref_text or "", gen_text=text, file_wave=out_path)
+            if seed is not None:
+                torch.manual_seed(seed)
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed_all(seed)
+            model.infer(
+                ref_file=ref_path, ref_text=ref_text or "", gen_text=text,
+                file_wave=out_path,
+                speed=max(0.5, min(2.0, speed)),
+                nfe_step=max(8, min(64, nfe_step)),
+                cross_fade_duration=max(0.0, min(0.5, cross_fade_duration)),
+            )
             return open(out_path, "rb").read()
         finally:
             os.unlink(out_path)
@@ -722,6 +736,8 @@ async def generate_chatterbox(
     ref_wav: UploadFile = File(None),
     exaggeration: float = Form(0.5),
     cfg_weight: float = Form(0.5),
+    temperature: float = Form(0.8),
+    seed: int = Form(None),
 ):
     ref_path = None
     cleanup_ref = False
@@ -734,8 +750,16 @@ async def generate_chatterbox(
 
     def _run():
         import torchaudio
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
         model = _get_chatterbox()
-        wav = model.generate(text, audio_prompt_path=ref_path, exaggeration=exaggeration, cfg_weight=cfg_weight)
+        kwargs = dict(audio_prompt_path=ref_path, exaggeration=exaggeration, cfg_weight=cfg_weight)
+        try:
+            wav = model.generate(text, temperature=max(0.1, min(2.0, temperature)), **kwargs)
+        except TypeError:
+            wav = model.generate(text, **kwargs)  # fallback if temperature not supported
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as out_tmp:
             out_path = out_tmp.name
         try:
