@@ -80,8 +80,18 @@ def _get_fish_engine():
         return _fish_engine
 
 
-# ── Kokoro French TTS ─────────────────────────────────────────────────────────
-_kokoro_pipeline = None
+# ── Enabled engines (CPU/GPU gating) ─────────────────────────────────────────
+_ENABLED_ENV = os.environ.get("ENABLED_ENGINES", "all").lower()
+ENABLED_ENGINES: set[str] | None = (
+    None if _ENABLED_ENV == "all"
+    else {e.strip() for e in _ENABLED_ENV.split(",") if e.strip()}
+)
+
+def _engine_enabled(name: str) -> bool:
+    return ENABLED_ENGINES is None or name in ENABLED_ENGINES
+
+# ── Kokoro TTS (multilingual) ─────────────────────────────────────────────────
+_kokoro_pipelines: dict[str, object] = {}
 _kokoro_lock = threading.Lock()
 
 KOKORO_VOICES_FR = {
@@ -105,14 +115,22 @@ KOKORO_VOICES_FR = {
     "bm_lewis":   "Lewis — EN(UK) Homme",
 }
 
-def _get_kokoro():
-    global _kokoro_pipeline
-    if _kokoro_pipeline is None:
-        with _kokoro_lock:
-            if _kokoro_pipeline is None:
-                from kokoro import KPipeline
-                _kokoro_pipeline = KPipeline(lang_code="f")
-    return _kokoro_pipeline
+_VOICE_LANG_CODE = {
+    "ff": "f",   # French female
+    "af": "a",   # American English female
+    "am": "a",   # American English male
+    "bf": "b",   # British English female
+    "bm": "b",   # British English male
+}
+
+def _get_kokoro(voice: str = "ff_siwis"):
+    prefix = voice[:2] if len(voice) >= 2 else "ff"
+    lang_code = _VOICE_LANG_CODE.get(prefix, "f")
+    with _kokoro_lock:
+        if lang_code not in _kokoro_pipelines:
+            from kokoro import KPipeline
+            _kokoro_pipelines[lang_code] = KPipeline(lang_code=lang_code)
+    return _kokoro_pipelines[lang_code]
 
 # ── Chatterbox TTS (ResembleAI) ───────────────────────────────────────────────
 _chatterbox_model = None
@@ -151,8 +169,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 try:
     from faster_qwen3_tts import FasterQwen3TTS
 except ImportError:
-    print("Error: faster_qwen3_tts not found. Install with: pip install faster-qwen3-tts")
-    sys.exit(1)
+    if _engine_enabled("qwen3"):
+        print("Error: faster_qwen3_tts not found. Install with: pip install faster-qwen3-tts")
+        sys.exit(1)
+    FasterQwen3TTS = None  # type: ignore
 
 try:
     from nano_parakeet import from_pretrained as _parakeet_from_pretrained
@@ -364,6 +384,8 @@ async def get_status():
 
 @app.post("/load")
 async def load_model(model_id: str = Form(...)):
+    if not _engine_enabled("qwen3"):
+        raise HTTPException(status_code=503, detail="Qwen3 engine not enabled on this server.")
     global _active_model_name, _loading
     if model_id in _model_cache:
         _active_model_name = model_id
@@ -408,6 +430,8 @@ async def generate_stream(
     ref_audio: UploadFile = File(None),
     seed: int = Form(None),
 ):
+    if not _engine_enabled("qwen3"):
+        raise HTTPException(status_code=503, detail="Qwen3 engine not enabled on this server.")
     if not _active_model_name or _active_model_name not in _model_cache:
         raise HTTPException(status_code=400, detail="Modèle non chargé. Cliquez sur 'Load' d'abord.")
     if len(text) > MAX_TEXT_CHARS:
@@ -566,6 +590,8 @@ async def generate_non_streaming(
     ref_audio: UploadFile = File(None),
     seed: int = Form(None),
 ):
+    if not _engine_enabled("qwen3"):
+        raise HTTPException(status_code=503, detail="Qwen3 engine not enabled on this server.")
     if not _active_model_name or _active_model_name not in _model_cache:
         raise HTTPException(status_code=400, detail="Modèle non chargé.")
     if len(text) > MAX_TEXT_CHARS:
@@ -647,11 +673,13 @@ async def generate_kokoro_fr(
     voice: str = Form("ff_siwis"),
     speed: float = Form(1.0),
 ):
+    if not _engine_enabled("kokoro"):
+        raise HTTPException(status_code=503, detail="Kokoro engine not enabled on this server.")
     if voice not in KOKORO_VOICES_FR:
         voice = "ff_siwis"
     speed = max(0.5, min(2.0, speed))
     def _run():
-        pipeline = _get_kokoro()
+        pipeline = _get_kokoro(voice)
         chunks = []
         for _gs, _ps, audio in pipeline(text, voice=voice, speed=speed):
             chunks.append(audio.numpy() if hasattr(audio, "numpy") else audio)
@@ -679,6 +707,8 @@ async def generate_f5_fr(
     cross_fade_duration: float = Form(0.15),
     seed: int = Form(None),
 ):
+    if not _engine_enabled("f5"):
+        raise HTTPException(status_code=503, detail="F5-TTS engine not enabled on this server.")
     ref_path = None
     cleanup_ref = False
     if ref_wav and ref_wav.filename:
@@ -739,6 +769,8 @@ async def generate_chatterbox(
     temperature: float = Form(0.8),
     seed: int = Form(None),
 ):
+    if not _engine_enabled("chatterbox"):
+        raise HTTPException(status_code=503, detail="Chatterbox engine not enabled on this server.")
     ref_path = None
     cleanup_ref = False
     if ref_wav and ref_wav.filename:
@@ -812,6 +844,8 @@ async def generate_fish(
     seed: int = Form(None),
     auto_split: bool = Form(False),
 ):
+    if not _engine_enabled("fish"):
+        raise HTTPException(status_code=503, detail="Fish-Speech engine not enabled on this server.")
     ref_path = None
     cleanup_ref = False
     if ref_wav and ref_wav.filename:
