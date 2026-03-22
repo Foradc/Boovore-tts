@@ -1399,7 +1399,7 @@ select option, select optgroup {
             <option selected>French</option><option>English</option><option>Chinese</option><option>German</option><option>Spanish</option>
           </select>
         </div>
-        <textarea id="bookVoiceInstr" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;resize:none;outline:none">A warm, calm narrator with a clear and engaging delivery.</textarea>
+        <textarea id="bookVoiceInstr" rows="3" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;resize:none;outline:none">A professional French audiobook narrator with a warm, deep, and engaging voice. Speak at a measured pace — not too fast, not too slow. Respect punctuation: pause naturally at commas, breathe at periods, and hold longer at paragraph breaks. Maintain consistent tone throughout, slightly lower and richer than everyday speech. Distinguish narration from dialogue with subtle vocal shifts.</textarea>
         <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
           <span style="font-size:11px;color:var(--dim);flex-shrink:0">Graine vocale :</span>
           <input id="bookSeedIn" type="number" placeholder="auto" style="width:100px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:12px;font-family:monospace">
@@ -1411,19 +1411,19 @@ select option, select optgroup {
         <!-- Preset voices -->
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <span style="font-size:11px;color:var(--dim);flex-shrink:0">Voix :</span>
-          <select id="bookFishVoicePreset" class="bvs-select" style="max-width:220px" onchange="applyFishPreset(this.value)">
+          <select id="bookFishVoicePreset" class="bvs-select" style="max-width:240px" onchange="applyFishPreset(this.value)">
             <option value="">— Référence audio personnalisée —</option>
-            <optgroup label="Narrateurs">
-              <option value="42">Narrateur A · voix grave</option>
-              <option value="1337">Narrateur B · voix posée</option>
-              <option value="8192">Narrateur C · voix jeune</option>
-              <option value="31415">Narrateur D · voix neutre</option>
+            <optgroup label="📖 Narrateurs (Hommes)">
+              <option value="42">Roland · grave, posé, classique</option>
+              <option value="1337">Marc · chaleureux, narrateur BBC</option>
+              <option value="8192">Léo · jeune, dynamique, SF</option>
+              <option value="31415">Victor · neutre, documentaire</option>
             </optgroup>
-            <optgroup label="Narratrices">
-              <option value="512">Narratrice A · voix claire</option>
-              <option value="777">Narratrice B · voix douce</option>
-              <option value="2048">Narratrice C · voix chaleureuse</option>
-              <option value="9999">Narratrice D · voix posée</option>
+            <optgroup label="📖 Narratrices (Femmes)">
+              <option value="512">Claire · claire, littéraire</option>
+              <option value="777">Sophie · douce, romans</option>
+              <option value="2048">Hélène · chaleureuse, intimiste</option>
+              <option value="9999">Nadia · posée, polar/thriller</option>
             </optgroup>
           </select>
         </div>
@@ -3380,6 +3380,18 @@ function updateBookStats() {
   $('bookStats').textContent = `${sel.length} chapitres · ~${estAudio}s audio · ~${estGen}s génération`;
 }
 
+// Preprocess text for better audiobook narration:
+// - Em-dashes → comma pause, ellipsis → natural pause, clean whitespace
+function preprocessForNarration(text) {
+  return text
+    .replace(/\s*—\s*/g, ', ')          // em-dash → comma pause
+    .replace(/\s*–\s*/g, ', ')          // en-dash → comma pause
+    .replace(/\.{3}/g, '...')           // normalize ellipsis
+    .replace(/([!?])\s+/g, '$1  ')      // extra space after ! ? for pause
+    .replace(/\s{3,}/g, '\n\n')         // normalize large whitespace gaps
+    .trim();
+}
+
 function splitIntoChunks(text, maxChars = 4000) {
   if (text.length <= maxChars) return [text];
   const paragraphs = text.split(/\n\n+/);
@@ -3543,7 +3555,8 @@ async function mergeAllChapters() {
   btn.disabled = false; btn.textContent = 'Fusionner en 1 WAV';
 }
 
-async function generateChunk(text) {
+async function generateChunk(rawText) {
+  const text = preprocessForNarration(rawText);
   const expressive = $('bookExpressive')?.checked ?? false;
 
   if (bookEngine === 'kokoro') {
@@ -3615,7 +3628,7 @@ async function generateChunk(text) {
     fd.append('repetition_penalty', expressive ? '1.05' : '1.1');
     const baseInstr = $('bookVoiceInstr').value;
     fd.append('instruct', expressive
-      ? baseInstr + ' Be emotionally expressive, vary your tone to match dramatic moments, whisper during tense scenes, and add warmth to tender passages.'
+      ? baseInstr + ' Be expressive like a stage-trained French narrator: stress key words, slow down during dramatic revelations, quicken pace for action, lower your voice for intimate or tense moments, and add subtle warmth for emotional passages.'
       : baseInstr);
     if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate', { method: 'POST', body: fd });
