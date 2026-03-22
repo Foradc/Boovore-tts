@@ -793,6 +793,20 @@ select option, select optgroup {
   padding: 1px 5px; border-radius: 10px; color: #fff;
   margin-left: 2px;
 }
+/* TTS language pills */
+.tlpill {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: var(--surface2); cursor: pointer;
+  font-size: 11px; font-weight: 500; color: var(--text2);
+  font-family: inherit; transition: all 0.13s; white-space: nowrap;
+}
+.tlpill:hover { border-color: var(--border); color: var(--text); }
+.tlpill.active {
+  border-color: var(--accent); color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 .engine-divider {
   height: 1px; background: var(--border); margin: 2px 0;
 }
@@ -985,6 +999,19 @@ select option, select optgroup {
       <button class="inner-tab" data-itab="qwen" onclick="switchInnerTab('qwen')">⚡ Qwen3-TTS</button>
     </div>
 
+    <!-- ── TTS Language bar ── -->
+    <div id="ttsLangBar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0 2px 0">
+      <span style="font-size:10px;color:var(--dim);letter-spacing:.5px;flex-shrink:0">🌍 LANGUE TTS :</span>
+      <button class="tlpill active" id="tlp-fr"  onclick="setTTSLang('fr')">🇫🇷 Français</button>
+      <button class="tlpill"        id="tlp-en"  onclick="setTTSLang('en')">🇬🇧 English</button>
+      <button class="tlpill"        id="tlp-de"  onclick="setTTSLang('de')">🇩🇪 Deutsch</button>
+      <button class="tlpill"        id="tlp-es"  onclick="setTTSLang('es')">🇪🇸 Español</button>
+      <button class="tlpill"        id="tlp-zh"  onclick="setTTSLang('zh')">🇨🇳 中文</button>
+      <button class="tlpill"        id="tlp-ja"  onclick="setTTSLang('ja')">🇯🇵 日本語</button>
+      <button class="tlpill"        id="tlp-pt"  onclick="setTTSLang('pt')">🇧🇷 Português</button>
+      <span id="ttsLangNote" style="font-size:10px;color:var(--dimmer);font-family:monospace;margin-left:4px"></span>
+    </div>
+
     <!-- ── Panel Voix Françaises ── -->
     <div id="innerPanelFR">
     <!-- Kokoro FR -->
@@ -1030,12 +1057,17 @@ select option, select optgroup {
       <div class="row">
         <label style="font-size:11px;color:var(--dim)">Réf :</label>
         <input type="file" id="cbRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;max-width:180px">
-        <label style="font-size:11px;color:var(--dim)" title="Intensité émotionnelle de la voix">Exag</label>
+        <label style="font-size:11px;color:var(--dim)" title="Intensité émotionnelle de la voix (0=neutre, 1=expressif)">Exag</label>
         <input type="range" id="cbExag" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('cbExagVal').textContent=parseFloat(this.value).toFixed(2)">
         <span id="cbExagVal" style="font-size:11px;color:var(--dim);min-width:32px">0.50</span>
-        <label style="font-size:11px;color:var(--dim)" title="Guidance du modèle — 0=libre, 1=strict">CFG</label>
+        <label style="font-size:11px;color:var(--dim)" title="Guidance — 0=plus libre/créatif, 1=plus fidèle au texte">CFG</label>
         <input type="range" id="cbCfg" min="0" max="1" step="0.05" value="0.5" style="width:60px" oninput="$('cbCfgVal').textContent=parseFloat(this.value).toFixed(2)">
         <span id="cbCfgVal" style="font-size:11px;color:var(--dim);min-width:32px">0.50</span>
+        <label style="font-size:11px;color:var(--dim)" title="Température — contrôle la variabilité de la voix">Temp</label>
+        <input type="range" id="cbTemp" min="0.1" max="2.0" step="0.05" value="0.8" style="width:60px" oninput="$('cbTempVal').textContent=parseFloat(this.value).toFixed(2)">
+        <span id="cbTempVal" style="font-size:11px;color:var(--dim);min-width:32px">0.80</span>
+        <label style="font-size:11px;color:var(--dim)" title="Graine aléatoire — même valeur = même voix">Seed</label>
+        <input type="number" id="cbSeed" placeholder="auto" style="width:68px;font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px;font-family:monospace">
         <button class="play-btn" onclick="generateChatterbox()" title="Générer">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
@@ -1049,6 +1081,19 @@ select option, select optgroup {
         <input type="file" id="f5RefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:120px;max-width:180px">
         <label style="font-size:11px;color:var(--dim);flex-shrink:0">Texte réf :</label>
         <input type="text" id="f5RefText" placeholder="Transcription du clip audio..." style="font-size:11px;flex:3;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:4px 6px">
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:6px">
+        <label style="font-size:11px;color:var(--dim)" title="Vitesse de lecture (0.5=lent, 1=normal, 2=rapide)">Vitesse</label>
+        <input type="range" id="f5Speed" min="0.5" max="2.0" step="0.05" value="1.0" style="width:64px" oninput="$('f5SpeedV').textContent=parseFloat(this.value).toFixed(2)">
+        <span id="f5SpeedV" style="font-size:11px;color:var(--dim);min-width:32px">1.00</span>
+        <label style="font-size:11px;color:var(--dim)" title="Nombre d'étapes de diffusion — plus = meilleure qualité, plus lent (8-64)">Qualité</label>
+        <input type="range" id="f5Nfe" min="8" max="64" step="4" value="32" style="width:64px" oninput="$('f5NfeV').textContent=this.value">
+        <span id="f5NfeV" style="font-size:11px;color:var(--dim);min-width:28px">32</span>
+        <label style="font-size:11px;color:var(--dim)" title="Durée du fondu entre segments (0=coupure nette, 0.15=doux)">Cross-fade</label>
+        <input type="range" id="f5Cross" min="0.0" max="0.5" step="0.05" value="0.15" style="width:56px" oninput="$('f5CrossV').textContent=parseFloat(this.value).toFixed(2)">
+        <span id="f5CrossV" style="font-size:11px;color:var(--dim);min-width:32px">0.15</span>
+        <label style="font-size:11px;color:var(--dim)">Seed</label>
+        <input type="number" id="f5Seed" placeholder="auto" style="width:68px;font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px;font-family:monospace">
         <button class="play-btn" onclick="generateF5()" title="Générer">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
@@ -1598,6 +1643,7 @@ const REC_SR = 24000;
 window.addEventListener('load', async () => {
   initTheme();
   setLang(appLang);
+  setTTSLang(ttsLang);
   autoGrow($('voiceInstr'));
   updateEstimation();
   selectStudioEngine('kokoro');
@@ -1630,6 +1676,35 @@ function applyTheme(t) {
   $('themeIcon').innerHTML = t === 'dark'
     ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
     : '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+}
+
+// ── TTS Language ──────────────────────────────────────────────────────────────
+const TTS_LANG_CONFIG = {
+  fr: { label:'Français', qwen:'French',     kokoroVoice:'ff_siwis', kokoroNote:'✓ Voix native FR', engines:'Kokoro ★  F5-TTS ★  Fish ✓  Qwen3 ✓  Chatterbox ~' },
+  en: { label:'English',  qwen:'English',    kokoroVoice:'af_heart', kokoroNote:'✓ Native EN voices', engines:'Kokoro ★  Chatterbox ★  Fish ✓  Qwen3 ✓  F5-TTS ~' },
+  de: { label:'Deutsch',  qwen:'German',     kokoroVoice:'af_heart', kokoroNote:'~ EN voice (no DE)',  engines:'Fish ★  Qwen3 ★  Chatterbox ~  Kokoro ~' },
+  es: { label:'Español',  qwen:'Spanish',    kokoroVoice:'af_heart', kokoroNote:'~ EN voice (no ES)',  engines:'Fish ★  Qwen3 ★  Chatterbox ~  Kokoro ~' },
+  zh: { label:'中文',      qwen:'Chinese',    kokoroVoice:'af_heart', kokoroNote:'✗ No Mandarin voice', engines:'Fish ★  Qwen3 ★' },
+  ja: { label:'日本語',    qwen:'Japanese',   kokoroVoice:'af_heart', kokoroNote:'✗ No JP voice',       engines:'Fish ★  Qwen3 ★' },
+  pt: { label:'Português', qwen:'Portuguese', kokoroVoice:'af_heart', kokoroNote:'~ EN voice (no PT)',  engines:'Fish ★  Qwen3 ★  Chatterbox ~' },
+};
+let ttsLang = localStorage.getItem('ttsLang') || 'fr';
+
+function setTTSLang(lang) {
+  ttsLang = lang;
+  localStorage.setItem('ttsLang', lang);
+  const cfg = TTS_LANG_CONFIG[lang] || TTS_LANG_CONFIG.fr;
+  // Update pill UI
+  document.querySelectorAll('.tlpill').forEach(p => p.classList.remove('active'));
+  const btn = $('tlp-' + lang); if (btn) btn.classList.add('active');
+  // Auto-set Kokoro voice
+  if ($('kokoroVoice') && cfg.kokoroVoice) $('kokoroVoice').value = cfg.kokoroVoice;
+  // Auto-set Qwen3 language selectors
+  if ($('langSel'))    $('langSel').value    = cfg.qwen;
+  if ($('langSelVis')) $('langSelVis').value = cfg.qwen;
+  // Show engine compatibility note
+  const note = document.getElementById('ttsLangNote');
+  if (note) note.textContent = cfg.engines;
 }
 
 // ── Voice Design Presets ───────────────────────────────────────────────────────
@@ -1967,6 +2042,10 @@ async function generateF5() {
     if (refFile) fd.append('ref_wav', refFile);
     const f5rt = $('f5RefText').value.trim();
     if (f5rt) fd.append('ref_text', f5rt);
+    fd.append('speed', $('f5Speed').value);
+    fd.append('nfe_step', $('f5Nfe').value);
+    fd.append('cross_fade_duration', $('f5Cross').value);
+    const f5Seed = $('f5Seed').value.trim(); if (f5Seed) fd.append('seed', f5Seed);
     const res = await fetch('/generate/f5_fr', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur F5-TTS'); }
     const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
@@ -2035,6 +2114,8 @@ async function generateChatterbox() {
     fd.append('text', text);
     fd.append('exaggeration', $('cbExag').value);
     fd.append('cfg_weight', $('cbCfg').value);
+    fd.append('temperature', $('cbTemp').value);
+    const cbSeed = $('cbSeed').value.trim(); if (cbSeed) fd.append('seed', cbSeed);
     const refFile = $('cbRefWav').files[0];
     if (refFile) fd.append('ref_wav', refFile);
     const res = await fetch('/generate/chatterbox', { method: 'POST', body: fd });
