@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-# Only enable CPU-friendly engines on free HuggingFace Space
-ENV ENABLED_ENGINES=kokoro,f5
+# Override in Space Settings → Variables: kokoro,f5 (CPU) or all (GPU)
+ENV ENABLED_ENGINES=all
 ENV HOME=/tmp
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

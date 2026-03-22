@@ -20,6 +20,20 @@
 
 ---
 
+## ⚙️ CPU / GPU — HuggingFace Space Settings
+
+In your Space → **Settings → Variables and secrets**, set:
+
+| `ENABLED_ENGINES` | Hardware | Engines available |
+|---|---|---|
+| `kokoro,f5` | CPU (free tier) | Kokoro · F5-TTS |
+| `kokoro,f5,chatterbox` | GPU T4 (~6 GB) | + Chatterbox |
+| `all` | GPU A10G / A100 | All 5 engines + Qwen3 |
+
+> Default is `all` — on free CPU tier, set `kokoro,f5` to avoid crashes.
+
+---
+
 ## 🚀 Quick Start (Vast.ai / GPU server)
 
 ### 1. Install dependencies
