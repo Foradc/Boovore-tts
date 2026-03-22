@@ -1393,6 +1393,9 @@ select option, select optgroup {
         </select>
       </div>
       <div class="bvs-panel" id="bvs-qwen_design" style="flex-direction:column;gap:6px">
+        <div id="qwenBookWarning" style="display:none;background:rgba(239,68,68,0.15);border:1px solid var(--red);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--red)">
+          ⚠️ Voice Design nécessite un modèle Qwen3 chargé. Allez dans <b>Studio → Qwen3-TTS → Voice Design → LOAD</b> d'abord.
+        </div>
         <div style="display:flex;gap:6px;align-items:center;width:100%">
           <span style="font-size:11px;color:var(--dim);flex-shrink:0">Langue :</span>
           <select id="bookQwenLangVD" class="bvs-select" style="max-width:110px">
@@ -1953,6 +1956,7 @@ async function fetchStatus() {
     if (d.loaded && d.model) {
       loadedModel = d.model;
       $('modelSel').value = d.model;
+      updateQwenBookWarning();
     }
     populateSpeakers(d.speakers || []);
     renderPresetRefs(d.preset_refs || []);
@@ -2978,10 +2982,22 @@ function applyFishPreset(seed) {
   }
 }
 
+function updateQwenBookWarning() {
+  const warn = $('qwenBookWarning');
+  if (!warn) return;
+  const needsQwen = ['qwen_design','qwen_custom','qwen_clone'].includes(bookEngine);
+  const missingModel = needsQwen && !loadedModel;
+  const wrongModel = bookEngine === 'qwen_design' && loadedModel && !loadedModel.includes('VoiceDesign');
+  warn.style.display = (missingModel || wrongModel) ? '' : 'none';
+  if (wrongModel) warn.innerHTML = '⚠️ Voice Design nécessite le modèle <b>1.7B-VoiceDesign</b>. Chargez-le dans Studio → Qwen3 → Voice Design → LOAD.';
+  else warn.innerHTML = '⚠️ Voice Design nécessite un modèle Qwen3 chargé. Allez dans <b>Studio → Qwen3-TTS → Voice Design → LOAD</b> d\'abord.';
+}
+
 function switchBookEngine(engine) {
   bookEngine = engine;
   const engines = ['kokoro', 'qwen_design', 'fish', 'chatterbox', 'f5', 'qwen_custom', 'qwen_clone'];
   engines.forEach(e => { $(`bvs-${e}`).style.display = e === engine ? '' : 'none'; });
+  updateQwenBookWarning();
   document.querySelectorAll('.bvs-tab').forEach((btn, i) => {
     btn.classList.toggle('active', engines[i] === engine);
   });
