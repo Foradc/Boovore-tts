@@ -616,28 +616,45 @@ async def generate_non_streaming(
         if model is None:
             raise RuntimeError("No model loaded.")
         if seed is not None:
+            # Full determinism: seed all RNG sources used by faster-qwen3-tts
+            import random as _rnd
+            _rnd.seed(seed)
+            np.random.seed(seed % (2**31))
             torch.manual_seed(seed)
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
-        t0 = time.perf_counter()
-        if mode == "voice_clone":
-            audio_list, sr = model.generate_voice_clone(
-                text=text, language=language, ref_audio=tmp_path, ref_text=ref_text,
-                xvec_only=xvec_only, temperature=temperature, top_k=top_k,
-                repetition_penalty=repetition_penalty, max_new_tokens=1800,
-            )
-        elif mode == "custom":
-            if not speaker:
-                raise ValueError("Speaker ID required")
-            audio_list, sr = model.generate_custom_voice(
-                text=text, speaker=speaker, language=language, instruct=instruct,
-                temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
-            )
+            # cuDNN deterministic mode: same kernel algo across calls → same output
+            _prev_det   = torch.backends.cudnn.deterministic
+            _prev_bench = torch.backends.cudnn.benchmark
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark     = False
         else:
-            audio_list, sr = model.generate_voice_design(
-                text=text, instruct=instruct, language=language,
-                temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
-            )
+            _prev_det = _prev_bench = None
+        t0 = time.perf_counter()
+        try:
+            if mode == "voice_clone":
+                audio_list, sr = model.generate_voice_clone(
+                    text=text, language=language, ref_audio=tmp_path, ref_text=ref_text,
+                    xvec_only=xvec_only, temperature=temperature, top_k=top_k,
+                    repetition_penalty=repetition_penalty, max_new_tokens=1800,
+                )
+            elif mode == "custom":
+                if not speaker:
+                    raise ValueError("Speaker ID required")
+                audio_list, sr = model.generate_custom_voice(
+                    text=text, speaker=speaker, language=language, instruct=instruct,
+                    temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
+                )
+            else:
+                audio_list, sr = model.generate_voice_design(
+                    text=text, instruct=instruct, language=language,
+                    temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
+                )
+        finally:
+            # Restore cuDNN settings after generation
+            if _prev_det is not None:
+                torch.backends.cudnn.deterministic = _prev_det
+                torch.backends.cudnn.benchmark     = _prev_bench
         elapsed = time.perf_counter() - t0
         audio = _concat_audio(audio_list)
         dur = len(audio) / sr
