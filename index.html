@@ -1769,6 +1769,7 @@ let bookF5RefFile = null;
 let bookQwenRefFile = null;
 let bookFishRefFile = null;
 let bookFishRollingRef = null;  // rolling reference: tail of last generated fish chunk
+let bookQwenDesignAnchor = null; // voice anchor: first VoiceDesign chunk → reused as voice_clone ref for all subsequent chunks
 let bookSeed = null; // fixed seed for voice consistency across all chunks
 
 const defaultSpeakers = [
@@ -3776,7 +3777,8 @@ async function generateBook() {
   if ($('bookSeedDisplay')) $('bookSeedDisplay').textContent = `seed: ${bookSeed}`;
 
   bookBusy = true; bookCancelled = false;
-  bookFishRollingRef = null;  // reset rolling reference at start of each book generation
+  bookFishRollingRef = null;    // reset rolling reference at start of each book generation
+  bookQwenDesignAnchor = null;  // reset voice anchor so first chunk re-designs the voice
   bookStartTime = Date.now(); bookChaptersDone = 0;
   $('bookGenBtn').disabled = true; $('bookGenBtn').style.display = 'none';
   $('bookResumeBtn').style.display = 'none';
@@ -3978,22 +3980,39 @@ async function generateChunk(rawText) {
   if (bookEngine === 'qwen_design') {
     const fd = new FormData();
     fd.append('text', text);
-    fd.append('mode', 'voice_design');
     fd.append('language', $('bookQwenLangVD').value);
     fd.append('temperature', expressive ? '0.85' : '0.7');
     fd.append('top_k', expressive ? '40' : '30');
     fd.append('repetition_penalty', expressive ? '1.05' : '1.1');
-    const baseInstr = $('bookVoiceInstr').value;
-    fd.append('instruct', expressive
-      ? baseInstr + ' Be expressive like a stage-trained French narrator: stress key words, slow down during dramatic revelations, quicken pace for action, lower your voice for intimate or tense moments, and add subtle warmth for emotional passages.'
-      : baseInstr);
     if (bookSeed !== null) fd.append('seed', bookSeed);
+
+    if (bookQwenDesignAnchor) {
+      // Chunks 2+: clone from captured voice anchor → identical voice guaranteed
+      fd.append('mode', 'voice_clone');
+      fd.append('ref_audio', bookQwenDesignAnchor, 'anchor.wav');
+      fd.append('xvec_only', 'true');
+    } else {
+      // First chunk: design voice from instruct prompt
+      fd.append('mode', 'voice_design');
+      const baseInstr = $('bookVoiceInstr').value;
+      fd.append('instruct', expressive
+        ? baseInstr + ' Be expressive like a stage-trained French narrator: stress key words, slow down during dramatic revelations, quicken pace for action, lower your voice for intimate or tense moments, and add subtle warmth for emotional passages.'
+        : baseInstr);
+    }
+
     const res = await fetch('/generate', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur VoiceDesign'); }
     const d = await res.json();
     if (d.metrics?.rtf > 0) lastRtf = d.metrics.rtf;
     const bytes = Uint8Array.from(atob(d.audio_b64), c => c.charCodeAt(0));
-    return new Blob([bytes], { type: 'audio/wav' });
+    const blob = new Blob([bytes], { type: 'audio/wav' });
+
+    // Capture first chunk as voice anchor (trimmed to 10s) for all subsequent chunks
+    if (!bookQwenDesignAnchor) {
+      bookQwenDesignAnchor = await trimWavBlob(blob, 10);
+    }
+
+    return blob;
   }
 
   // qwen_custom or qwen_clone → /generate endpoint
@@ -4040,6 +4059,29 @@ async function concatWavBlobs(blobs) {
   const out = new Uint8Array(outAb, 44);
   let offset = 0;
   for (const p of parts) { out.set(p, offset); offset += p.length; }
+  return new Blob([outAb], { type: 'audio/wav' });
+}
+
+// Return a new WAV blob containing only the first maxSecs seconds of audio.
+// Used to create a compact voice anchor from the first generated chunk.
+async function trimWavBlob(blob, maxSecs) {
+  const ab = await blob.arrayBuffer();
+  const p = parseWav(new Uint8Array(ab));
+  if (!p) return blob; // can't parse → return original
+  const { rawPcm, sr } = p;
+  // 16-bit mono: 2 bytes per sample, sr samples per second
+  const maxBytes = Math.min(rawPcm.length, Math.floor(maxSecs * sr * 2));
+  const trimmed = rawPcm.slice(0, maxBytes);
+  const outAb = new ArrayBuffer(44 + trimmed.length);
+  const v = new DataView(outAb);
+  const ws = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  ws(0,'RIFF'); v.setUint32(4, 36 + trimmed.length, true);
+  ws(8,'WAVE'); ws(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true);  v.setUint16(34,16,true);
+  ws(36,'data'); v.setUint32(40, trimmed.length, true);
+  new Uint8Array(outAb, 44).set(trimmed);
   return new Blob([outAb], { type: 'audio/wav' });
 }
 
