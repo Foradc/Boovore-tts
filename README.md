@@ -10,7 +10,7 @@ pinned: false
 
 # 🎙 Boovore — Multi-Engine TTS Studio
 
-**Boovore** is a self-hosted, GPU-accelerated Text-to-Speech studio with 5 best-in-class engines and a built-in audiobook generator. Run it on any CUDA machine (tested on RTX 3090) via a clean, dark-mode web UI.
+**Boovore** is a self-hosted, GPU-accelerated Text-to-Speech studio with 6 best-in-class engines and a built-in audiobook generator. Run it on any CUDA machine (tested on RTX 3090) via a clean, dark-mode web UI.
 
 > **Name**: Boovore = *Book* + *Devour* — built to devour books in audio.
 
@@ -27,6 +27,9 @@ pinned: false
 | **F5-TTS** | ★★★★ | ⚡⚡ | French voice cloning |
 | **Fish-Speech 1.5** | ★★★★★ | ⚡⚡ | Multilingual voice cloning (fishaudio) |
 | **Qwen3-TTS** | ★★★★★ | ⚡ | Clone · Custom · Voice Design |
+| **Voxtral 4B** | ★★★★★ | ⚡⚡ | French-first, 68% win vs ElevenLabs (Mistral AI) |
+
+> **Voxtral** uses vLLM-Omni (`mistralai/Voxtral-4B-TTS-2603`) with voice cloning via a reference WAV. Start it separately with `python3 voxtral_server.py`.
 
 ---
 
@@ -38,9 +41,11 @@ In your Space → **Settings → Variables and secrets**, set:
 |---|---|---|
 | `kokoro,f5` | CPU (free tier) | Kokoro · F5-TTS |
 | `kokoro,f5,chatterbox` | GPU T4 (~6 GB) | + Chatterbox |
-| `all` | GPU A10G / A100 | All 5 engines + Qwen3 |
+| `all` | GPU A10G / A100 | All engines + Qwen3 |
 
 > Default is `all` — on free CPU tier, set `kokoro,f5` to avoid crashes.
+
+For **Voxtral**, also set `VOXTRAL_URL` to point to your vLLM-Omni server (default: `http://localhost:8000`).
 
 ---
 
@@ -70,7 +75,26 @@ pip3 install -e . --no-deps
 huggingface-cli download fishaudio/fish-speech-1.5 --local-dir /root/fish-speech-model
 ```
 
-### 2. Start the server
+### 2. (Optional) Start Voxtral TTS server
+
+Voxtral requires a separate vLLM-Omni process (~8 GB VRAM). Needs a HuggingFace token — accept the CC BY-NC license at [mistralai/Voxtral-4B-TTS-2603](https://huggingface.co/mistralai/Voxtral-4B-TTS-2603) first.
+
+```bash
+pip install "vllm[audio]>=0.18.0" httpx soundfile
+export HF_TOKEN=hf_xxxx
+nohup python3 voxtral_server.py >> /root/voxtral.log 2>&1 &
+# Wait 5-10 min for model download + load (first run only)
+```
+
+Optionally generate a narrator reference WAV (for voice cloning):
+
+```bash
+# While the Qwen3 server is running:
+python3 make_narrator_reference.py
+# Output: /workspace/narrator_reference.wav
+```
+
+### 3. Start the main server
 
 ```bash
 nohup python3 server.py --port 7860 >> /root/server.log 2>&1 &
@@ -88,7 +112,7 @@ ssh -p <PORT> root@<HOST> -L 7860:localhost:7860 -N
 
 ## 📖 Features
 
-- **TTS Studio** — one-click engine selector (7 pills), single generate button
+- **TTS Studio** — one-click engine selector (8 pills), single generate button
 - **Audiobook Generator** — import `.txt` / `.pdf` / `.epub`, auto-detect chapters, batch generate with any engine, download per chapter or merge into one WAV
 - **Voice Cloning** — upload a reference audio clip (Chatterbox, F5-TTS, Fish-Speech, Qwen3)
 - **Real-time metrics** — TTFA, RTF, duration, buffer
@@ -100,8 +124,11 @@ ssh -p <PORT> root@<HOST> -L 7860:localhost:7860 -N
 ## 🗂 Project Structure
 
 ```
-server.py       — FastAPI backend (5 engines)
-index.html      — UI single-page (vanilla JS, aucune dépendance frontend)
+server.py                    — FastAPI backend (6 engines)
+index.html                   — UI single-page (vanilla JS, no frontend deps)
+voxtral_server.py            — vLLM-Omni server manager (start/stop/status)
+make_narrator_reference.py   — Generate narrator reference WAV via Qwen3
+narrator_reference.wav       — (generated) voice clone reference for Voxtral
 requirements.txt
 Dockerfile
 ```
@@ -126,12 +153,13 @@ Dockerfile
 | `SWivid/F5-TTS` | ~1.2 GB | F5-TTS |
 | `resemble-ai/chatterbox` | ~1.5 GB | Chatterbox |
 | `fishaudio/fish-speech-1.5` | ~1.4 GB | Fish-Speech |
+| `mistralai/Voxtral-4B-TTS-2603` | ~8 GB (BF16) | Voxtral (gated — HF token required) |
 
 ---
 
 ## 🏷️ GitHub Topics
 
-`text-to-speech` `tts` `voice-cloning` `audiobook` `french-tts` `kokoro` `f5-tts` `fish-speech` `chatterbox` `qwen3` `fastapi` `cuda` `self-hosted` `gpu` `french` `multilingual`
+`text-to-speech` `tts` `voice-cloning` `audiobook` `french-tts` `kokoro` `f5-tts` `fish-speech` `chatterbox` `qwen3` `voxtral` `mistral` `vllm` `fastapi` `cuda` `self-hosted` `gpu` `french` `multilingual`
 
 ---
 
@@ -142,6 +170,8 @@ Dockerfile
 - [Chatterbox](https://github.com/resemble-ai/chatterbox) — ResembleAI
 - [F5-TTS](https://github.com/SWivid/F5-TTS) — SWivid
 - [Kokoro](https://github.com/hexgrad/kokoro) — hexgrad
+- [Voxtral](https://mistral.ai) — Mistral AI (`mistralai/Voxtral-4B-TTS-2603`, CC BY-NC)
+- French prosody preprocessing inspired by [arXiv:2508.17494](https://arxiv.org/abs/2508.17494)
 
 ---
 
