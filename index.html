@@ -1049,6 +1049,11 @@ select option, select optgroup {
             Fish-Speech
             <span class="ep-tag" style="background:#0ea5e9">NEW</span>
           </button>
+          <button class="epill" id="pill-voxtral" style="--ep-color:#f59e0b" onclick="selectStudioEngine('voxtral')">
+            <span class="ep-dot" style="background:#f59e0b"></span>
+            Voxtral
+            <span class="ep-tag" style="background:#f59e0b;color:#000">FR★</span>
+          </button>
         </div>
       </div>
       <div class="engine-divider"></div>
@@ -1239,6 +1244,20 @@ select option, select optgroup {
         <button class="play-btn" onclick="generateFish()" title="Générer" style="display:none">
           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
         </button>
+      </div>
+    </div>
+    <!-- Voxtral TTS -->
+    <div class="mode-row" id="rowVoxtral">
+      <div class="label"><span id="engLblVoxtral">Voxtral 4B — TTS français Mistral AI (vLLM-Omni)</span><span class="switch-tag" style="background:#f59e0b;color:#000">FR★</span></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Réf audio :</label>
+        <input type="file" id="voxtralRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:120px;max-width:180px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Texte réf :</label>
+        <input type="text" id="voxtralRefText" placeholder="Transcription du clip..." style="font-size:11px;flex:3;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:4px 6px">
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px">
+        Nécessite un serveur vLLM-Omni local (<code style="font-size:10px;color:var(--accent)">python3 voxtral_server.py</code>).
+        Si aucun clip de référence, utilise <code style="font-size:10px;color:var(--accent)">narrator_reference.wav</code>.
       </div>
     </div>
     </div><!-- /#innerPanelFR -->
@@ -1902,6 +1921,7 @@ const I18N = {
     engChatterbox: 'Chatterbox — clonage zero-shot (ResembleAI)',
     engF5: 'F5-TTS FR — clonage vocal français',
     engFish: 'Fish-Speech 1.5 — clonage vocal multilingue',
+    engVoxtral: 'Voxtral 4B — TTS français Mistral AI (vLLM-Omni)',
     genBtn: 'Générer',
     bookGenBtn: 'Générer la sélection',
     bookPause: 'Pause',
@@ -1917,6 +1937,7 @@ const I18N = {
     engChatterbox: 'Chatterbox — zero-shot cloning (ResembleAI)',
     engF5: 'F5-TTS FR — French voice cloning',
     engFish: 'Fish-Speech 1.5 — multilingual voice cloning',
+    engVoxtral: 'Voxtral 4B — Mistral AI French TTS (vLLM-Omni)',
     genBtn: 'Generate',
     bookGenBtn: 'Generate selection',
     bookPause: 'Pause',
@@ -1943,6 +1964,7 @@ function setLang(lang) {
   $('engLblChatterbox').textContent = t.engChatterbox;
   $('engLblF5').textContent = t.engF5;
   $('engLblFish').textContent = t.engFish;
+  $('engLblVoxtral').textContent = t.engVoxtral;
   // Buttons
   $('genBtnLabel').textContent = t.genBtn;
   $('bookGenBtnLabel').textContent = t.bookGenBtn;
@@ -2113,8 +2135,8 @@ function switchInnerTab(tab) {
 // ── Engine pill selector ───────────────────────────────────────────────────────
 let currentEngine = 'kokoro'; // selected studio engine
 
-const ENGINE_TO_ITAB = { kokoro:'fr', chatterbox:'fr', f5:'fr', fish:'fr', clone:'qwen', custom:'qwen', design:'qwen' };
-const ENGINE_TO_ROW  = { kokoro:'rowKokoro', chatterbox:'rowChatterbox', f5:'rowF5', fish:'rowFish' };
+const ENGINE_TO_ITAB = { kokoro:'fr', chatterbox:'fr', f5:'fr', fish:'fr', voxtral:'fr', clone:'qwen', custom:'qwen', design:'qwen' };
+const ENGINE_TO_ROW  = { kokoro:'rowKokoro', chatterbox:'rowChatterbox', f5:'rowF5', fish:'rowFish', voxtral:'rowVoxtral' };
 const ENGINE_TO_QWEN = { clone:'voice_clone', custom:'custom', design:'voice_design' };
 
 function selectStudioEngine(engine) {
@@ -2152,6 +2174,7 @@ async function generateCurrent() {
     case 'chatterbox': await generateChatterbox();  break;
     case 'f5':         await generateF5();           break;
     case 'fish':       await generateFish();         break;
+    case 'voxtral':    await generateVoxtral();      break;
     default: break;
   }
 }
@@ -2326,6 +2349,42 @@ async function generateFish() {
     if (seed !== null && !isNaN(seed)) fd.append('seed', seed);
     const res = await fetch('/generate/fish', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Fish-Speech'); }
+    const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+    const genSecs = (performance.now() - t0) / 1000;
+    setPlayer(blob);
+    $('player').play().catch(() => {});
+    pb.classList.remove('spin'); pb.style.width = '100%';
+    $('waveInd').classList.add('off');
+    $('mClient').textContent = genSecs.toFixed(1) + 's';
+  } catch(e) {
+    showMsg('err', e.message);
+    pb.classList.remove('spin'); pb.style.width = '0%';
+  }
+  busy = false; setPlayBtns(false);
+}
+
+async function generateVoxtral() {
+  if (busy) return;
+  const text = $('textIn').value.trim();
+  if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
+  hideMsg();
+  busy = true; setPlayBtns(true);
+  $('results').classList.add('show');
+  $('player').parentElement.style.display = 'none';
+  $('waveInd').classList.remove('off');
+  $('pbarWrap').classList.add('show');
+  const pb = $('pbar'); pb.style.width = ''; pb.classList.add('spin');
+  resetMetrics();
+  const t0 = performance.now();
+  try {
+    const fd = new FormData();
+    fd.append('text', text);
+    const refFile = $('voxtralRefWav') && $('voxtralRefWav').files[0];
+    if (refFile) fd.append('ref_wav', refFile);
+    const refText = $('voxtralRefText') ? $('voxtralRefText').value.trim() : '';
+    if (refText) fd.append('ref_text', refText);
+    const res = await fetch('/generate/voxtral', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur Voxtral'); }
     const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
     const genSecs = (performance.now() - t0) / 1000;
     setPlayer(blob);

@@ -17,6 +17,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -31,6 +32,10 @@ import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+
+# ── Voxtral TTS (vLLM-Omni, Mistral AI) ──────────────────────────────────────
+_VOXTRAL_URL   = os.environ.get("VOXTRAL_URL", "http://localhost:8000")
+_VOXTRAL_MODEL = "mistralai/Voxtral-4B-TTS-2603"
 
 # ── Fish-Speech ───────────────────────────────────────────────────────────────
 FISH_SPEECH_REPO = Path("/tmp/fish-speech")
@@ -294,6 +299,58 @@ _AUDIO_TOO_LARGE_MSG = (
 )
 
 
+# ─── French TTS preprocessing ─────────────────────────────────────────────────
+
+FRENCH_ABBREVS = [
+    (r'\bM\.\s+',              'Monsieur '),
+    (r'\bMme\.?\s+',           'Madame '),
+    (r'\bMlle\.?\s+',          'Mademoiselle '),
+    (r'\bDr\.?\s+',            'Docteur '),
+    (r'\bPr\.?\s+',            'Professeur '),
+    (r'\bSt\.?\s+',            'Saint '),
+    (r'\betc\.(?!\w)',          'et cetera'),
+    (r'\bn°\s*(\d+)',           r'numéro \1'),
+    (r'\b(\d{1,2})\s*h\s*(\d{2})\b', r'\1 heures \2'),
+    (r'\b(\d{1,2})\s*h\b',     r'\1 heures'),
+    (r'\bp\.\s*(\d+)\b',       r'page \1'),
+]
+
+FRENCH_NARRATOR_PROMPT = (
+    "Narrateur professionnel de livres audio français, voix grave, chaude et captivante. "
+    "Débit naturellement mesuré — ni précipité ni traînant. "
+    "Respectez scrupuleusement la ponctuation : "
+    "légère pause aux virgules, souffle marqué aux points, "
+    "pause longue et respirée aux doubles sauts de paragraphe. "
+    "Aux guillemets « », adoptez un registre légèrement plus direct et personnel pour le dialogue, "
+    "puis revenez au ton narratif après le ». "
+    "Les points de suspension (...) et les tirets (—) appellent une vraie pause respiratoire. "
+    "Ton légèrement plus grave et plus riche que la conversation ordinaire, "
+    "comme un conteur au coin du feu. "
+    "Restez cohérent du début à la fin — même timbre, même rythme de fond."
+)
+
+
+def preprocess_french(text: str) -> str:
+    """French TTS prosody preprocessing (arXiv:2508.17494).
+    Expands abbreviations and inserts natural pause markers for the TTS model.
+    """
+    for pattern, repl in FRENCH_ABBREVS:
+        text = re.sub(pattern, repl, text)
+    # Guillemet spacing
+    text = re.sub(r'«\s*', '« ', text)
+    text = re.sub(r'\s*»', ' »', text)
+    # Paragraph breaks → strong pause
+    text = re.sub(r'\n\s*\n', ' ... ', text)
+    # Em-dash → spaced pause
+    text = re.sub(r'\s*—\s*', ' — ', text)
+    # Normalize ellipsis
+    text = re.sub(r'\.{3,}', '...', text)
+    # Normalize whitespace first, then add post-sentence double space
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'([!?])', r'\1 ', text)
+    return text.strip()
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _to_wav_b64(audio: np.ndarray, sr: int) -> str:
@@ -379,6 +436,8 @@ async def get_status():
         "queue_depth": _generation_waiters,
         "cached_models": list(_model_cache.keys()),
         "kokoro_voices": KOKORO_VOICES_FR,
+        "voxtral_url": _VOXTRAL_URL,
+        "voxtral_model": _VOXTRAL_MODEL,
     }
 
 
@@ -969,6 +1028,67 @@ async def generate_fish(
             os.unlink(ref_path)
         if cleanup_prev and prev_path and os.path.exists(prev_path):
             os.unlink(prev_path)
+
+
+@app.post("/generate/voxtral")
+async def generate_voxtral(
+    text: str = Form(...),
+    ref_wav: UploadFile = File(None),
+    ref_text: str = Form(""),
+):
+    """Generate speech via Voxtral TTS (vLLM-Omni server at VOXTRAL_URL).
+
+    Requires a running `python3 voxtral_server.py` instance.
+    Optionally upload a reference WAV for voice cloning; falls back to
+    narrator_reference.wav in the same directory as this script.
+    """
+    if not _engine_enabled("voxtral"):
+        raise HTTPException(status_code=503, detail="Voxtral engine not enabled on this server.")
+
+    try:
+        import httpx as _httpx
+    except ImportError:
+        raise HTTPException(status_code=503, detail="httpx not installed. Run: pip install httpx")
+
+    # Preprocess French text for better prosody
+    processed = preprocess_french(text)
+
+    ref_b64: str | None = None
+    if ref_wav and ref_wav.filename:
+        ref_bytes = await ref_wav.read()
+        if len(ref_bytes) > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=400, detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(ref_bytes) / 1024 / 1024))
+        ref_b64 = "data:audio/wav;base64," + base64.b64encode(ref_bytes).decode()
+    else:
+        narrator_ref = Path(__file__).parent / "narrator_reference.wav"
+        if narrator_ref.exists():
+            ref_b64 = "data:audio/wav;base64," + base64.b64encode(narrator_ref.read_bytes()).decode()
+
+    payload: dict = {
+        "model": _VOXTRAL_MODEL,
+        "input": processed,
+        "response_format": "wav",
+    }
+    if ref_b64:
+        payload["ref_audio"] = ref_b64
+        payload["ref_text"] = ref_text
+
+    def _run():
+        try:
+            r = _httpx.post(f"{_VOXTRAL_URL}/v1/audio/speech", json=payload, timeout=120.0)
+            r.raise_for_status()
+            return r.content
+        except _httpx.ConnectError:
+            raise RuntimeError(
+                f"Voxtral server not reachable at {_VOXTRAL_URL}. "
+                "Start it with: python3 voxtral_server.py"
+            )
+
+    try:
+        wav_bytes = await asyncio.to_thread(_run)
+        return Response(content=wav_bytes, media_type="audio/wav")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
