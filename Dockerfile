@@ -13,9 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY . /app
 
+# torch pinned: f5-tts pulls torchcodec, and an unpinned torch drifts to a release whose
+# torchcodec wheel no longer loads on CPU (F5 then fails with "Could not load libtorchcodec")
 RUN pip install --upgrade pip \
-    && pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
-    && pip install "kokoro>=0.9.4" "f5-tts>=1.1.0" \
+    && pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install "kokoro>=0.9.4" "f5-tts>=1.1.0" "torchcodec==0.7.*" \
     && pip install fastapi "uvicorn[standard]" python-multipart soundfile numpy huggingface_hub
 
 EXPOSE 7860

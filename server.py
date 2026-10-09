@@ -839,10 +839,11 @@ async def generate_f5_fr(
             ref_path = tmp.name
             cleanup_ref = True
     else:
-        # Try local narrator ref, then bundled F5-TTS ref (check all Python versions)
+        # Try local narrator ref, then bundled F5-TTS ref (any Python version; dist-packages on
+        # Debian/Ubuntu system Python, site-packages in the python:* Docker images)
         import glob as _glob
         bundled_candidates = _glob.glob(
-            "/usr/local/lib/python3*/dist-packages/f5_tts/infer/examples/basic/basic_ref_en.wav"
+            "/usr/local/lib/python3*/*-packages/f5_tts/infer/examples/basic/basic_ref_en.wav"
         )
         for candidate in [
             Path(__file__).parent / "narrator_ref.wav",
