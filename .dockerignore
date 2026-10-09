@@ -1,0 +1,9 @@
+.git
+venv/
+.venv/
+rustup/
+__pycache__/
+*.wav
+*.mp3
+xtts-env/
+xtts-narrator-fr-cache/
