@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import base64
 from collections import OrderedDict
+import gc
 import hashlib
 import io
 import json
@@ -96,6 +97,8 @@ ENABLED_ENGINES: set[str] | None = (
 
 def _engine_enabled(name: str) -> bool:
     return ENABLED_ENGINES is None or name in ENABLED_ENGINES
+
+_ALL_ENGINES = ("qwen3", "kokoro", "f5", "chatterbox", "fish", "voxtral")
 
 # ── Kokoro TTS (multilingual) ─────────────────────────────────────────────────
 _kokoro_pipelines: dict[str, object] = {}
@@ -198,6 +201,30 @@ if _active_models_env:
     AVAILABLE_MODELS = [m for m in _ALL_MODELS if m in _allowed]
 else:
     AVAILABLE_MODELS = list(_ALL_MODELS)
+
+# bf16 n'est natif qu'à partir d'Ampere (RTX 30xx). Sur Turing (RTX 20xx, T4) il est émulé
+# et lent : on passe les 1.7B en fp16. Les 0.6B débordent en fp16 (NaN → assert CUDA qui tue
+# le process), ils restent en bf16 émulé. QWEN3_DTYPE=bfloat16|float16|float32 force un choix.
+_QWEN3_DTYPE = os.environ.get("QWEN3_DTYPE", "auto").lower()
+
+def _qwen3_dtype(model_id: str) -> torch.dtype:
+    if _QWEN3_DTYPE != "auto":
+        return getattr(torch, _QWEN3_DTYPE)
+    if torch.cuda.is_bf16_supported(including_emulation=False):
+        return torch.bfloat16
+    return torch.bfloat16 if "0.6B" in model_id else torch.float16
+
+
+def _load_qwen3(model_id: str):
+    dtype = _qwen3_dtype(model_id)
+    print(f"Loading model: {model_id} ({dtype})")
+    model = FasterQwen3TTS.from_pretrained(model_id, device="cuda", dtype=dtype)
+    print("Capturing CUDA graphs…")
+    model._warmup(prefill_len=100)
+    return model
+
+# "cuda", "cpu" ou "off" — sur une carte 6 Go, parakeet sur GPU ne tient pas à côté d'un 1.7B
+_TRANSCRIBE_DEVICE = os.environ.get("TRANSCRIBE_DEVICE", "cuda").lower()
 
 BASE_DIR = Path(__file__).resolve().parent
 _ASSET_DIR = Path(os.environ.get("ASSET_DIR", "/tmp/faster-qwen3-tts-assets"))
@@ -408,7 +435,7 @@ async def transcribe_audio(audio: UploadFile = File(...)):
         wav_t = torch.from_numpy(wav)
         if sr != 16000:
             wav_t = torchaudio.functional.resample(wav_t.unsqueeze(0), sr, 16000).squeeze(0)
-        return _parakeet.transcribe(wav_t.cuda())
+        return _parakeet.transcribe(wav_t.to(_TRANSCRIBE_DEVICE))
     text = await asyncio.to_thread(run)
     return {"text": text}
 
@@ -438,6 +465,22 @@ async def get_status():
         "kokoro_voices": KOKORO_VOICES_FR,
         "voxtral_url": _VOXTRAL_URL,
         "voxtral_model": _VOXTRAL_MODEL,
+        "enabled_engines": [e for e in _ALL_ENGINES
+                            if _engine_enabled(e) and (e != "qwen3" or FasterQwen3TTS is not None)],
+    }
+
+
+@app.get("/preset_ref/{preset_id}")
+async def get_preset_ref(preset_id: str):
+    preset = _preset_refs.get(preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    return {
+        "id": preset["id"],
+        "label": preset["label"],
+        "filename": preset["filename"],
+        "ref_text": preset["ref_text"],
+        "audio_b64": preset["audio_b64"],
     }
 
 
@@ -455,11 +498,13 @@ async def load_model(model_id: str = Form(...)):
         global _active_model_name, _loading
         try:
             if len(_model_cache) >= _model_cache_max:
-                evicted, _ = _model_cache.popitem(last=False)
+                evicted = next(iter(_model_cache))
+                del _model_cache[evicted]
+                # Rendre la VRAM avant de charger le suivant : 6 Go ne tiennent pas deux 1.7B
+                gc.collect()
+                torch.cuda.empty_cache()
                 print(f"Model cache full — evicted: {evicted}")
-            new_model = FasterQwen3TTS.from_pretrained(model_id, device="cuda", dtype=torch.bfloat16)
-            print("Capturing CUDA graphs…")
-            new_model._warmup(prefill_len=100)
+            new_model = _load_qwen3(model_id)
             _model_cache[model_id] = new_model
             _model_cache.move_to_end(model_id)
             _active_model_name = model_id
@@ -1105,18 +1150,16 @@ def main():
 
     if not args.no_preload:
         global _active_model_name, _parakeet
-        print(f"Loading model: {args.model}")
-        _startup_model = FasterQwen3TTS.from_pretrained(args.model, device="cuda", dtype=torch.bfloat16)
-        print("Capturing CUDA graphs…")
-        _startup_model._warmup(prefill_len=100)
-        _model_cache[args.model] = _startup_model
+        # No local reference: main() lives as long as uvicorn.run, and a local would keep an
+        # evicted startup model (and its VRAM) alive after /load replaces it
+        _model_cache[args.model] = _load_qwen3(args.model)
         _active_model_name = args.model
-        _prime_preset_voice_cache(_startup_model)
+        _prime_preset_voice_cache(_model_cache[args.model])
         print("TTS model ready.")
 
-        if _parakeet_from_pretrained:
-            print("Loading transcription model (nano-parakeet)…")
-            _parakeet = _parakeet_from_pretrained(device="cuda")
+        if _parakeet_from_pretrained and _TRANSCRIBE_DEVICE != "off":
+            print(f"Loading transcription model (nano-parakeet, {_TRANSCRIBE_DEVICE})…")
+            _parakeet = _parakeet_from_pretrained(device=_TRANSCRIBE_DEVICE)
             print("Transcription model ready.")
 
         print(f"Ready. Open http://localhost:{args.port}")
