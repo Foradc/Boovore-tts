@@ -1775,7 +1775,7 @@ let loadedModel  = null;
 let _statusInitDone = false; // guard: only reset UI to Kokoro on first fetchStatus
 let loadingModel = null;
 let dlBlob   = null;
-let lastRtf  = 3.5; // 1.7B-Base ≈ 3.5× RTF, updated after first generation
+let lastRtf  = null; // measured on the first generation — speed depends on GPU and model, no guess before that
 let bookBusy = false;
 let bookChapters = [];
 let bookTitle = '';
@@ -1824,7 +1824,7 @@ window.addEventListener('load', async () => {
   updateEstimation();
   selectStudioEngine('kokoro');
   await fetchStatus();
-  if (!loadedModel && availableModels.length > 0) {
+  if (!loadedModel && availableModels.length > 0 && engineOn('qwen3')) {
     // Prefer CustomVoice as default (richer demo), fall back to first available
     const preferred = availableModels.find(m => m.includes('CustomVoice'))
       || availableModels[0];
@@ -2081,19 +2081,17 @@ async function fetchStatus() {
   try {
     const d = await fetch('/status').then(r => r.json());
     applyAvailableModels(d.available_models || []);
-    syncQwenModelSel(d.available_models || []);
     if (d.loaded && d.model) {
       loadedModel = d.model;
       $('modelSel').value = d.model;
       updateQwenBookWarning();
     }
+    // After modelSel holds the loaded model — "Load" reads the visible selector
+    syncQwenModelSel(d.available_models || []);
     populateSpeakers(d.speakers || []);
     renderPresetRefs(d.preset_refs || []);
     setPill(d.loaded ? 'loaded' : 'off', d.loaded ? 'ready' : 'not loaded');
-    // Kokoro + F5-TTS + Chatterbox always available
-    $('rowKokoro').classList.add('compatible');
-    $('rowF5').classList.add('compatible');
-    $('rowChatterbox').classList.add('compatible');
+    applyEnabledEngines(d.enabled_engines);
     // Sync visible lang selector
     if ($('langSelVis')) $('langSelVis').value = $('langSel').value || 'French';
     // Update Qwen3 row badges dynamically
@@ -2116,11 +2114,11 @@ async function fetchStatus() {
       if ($('grpLabel2')) $('grpLabel2').textContent = appLang === 'en' ? 'Qwen3-TTS · requires loading' : 'Qwen3-TTS · nécessite chargement';
       if ($('loadBtnVis')) $('loadBtnVis').textContent = 'Load';
     }
-    // Only reset to Kokoro on the very first load — never during polls or reloads
+    // Only reset to the default engine on the very first load — never during polls or reloads
     if (!_statusInitDone) {
       _statusInitDone = true;
       switchInnerTab('fr');
-      selectStudioEngine('kokoro');
+      selectStudioEngine(defaultStudioEngine(d.model_type));
     }
   } catch { setPill('off', 'offline'); }
 }
@@ -2138,6 +2136,46 @@ let currentEngine = 'kokoro'; // selected studio engine
 const ENGINE_TO_ITAB = { kokoro:'fr', chatterbox:'fr', f5:'fr', fish:'fr', voxtral:'fr', clone:'qwen', custom:'qwen', design:'qwen' };
 const ENGINE_TO_ROW  = { kokoro:'rowKokoro', chatterbox:'rowChatterbox', f5:'rowF5', fish:'rowFish', voxtral:'rowVoxtral' };
 const ENGINE_TO_QWEN = { clone:'voice_clone', custom:'custom', design:'voice_design' };
+
+// Engines the server actually runs (/status enabled_engines, from ENABLED_ENGINES).
+// The others answer 503, so their pills and book tabs are hidden.
+const ENGINE_SERVER_KEY = { kokoro:'kokoro', chatterbox:'chatterbox', f5:'f5', fish:'fish', voxtral:'voxtral', clone:'qwen3', custom:'qwen3', design:'qwen3' };
+const BOOK_ENGINES      = ['kokoro', 'qwen_design', 'fish', 'chatterbox', 'f5', 'qwen_custom', 'qwen_clone']; // .bvs-tab order
+const BOOK_SERVER_KEY   = { kokoro:'kokoro', fish:'fish', chatterbox:'chatterbox', f5:'f5', qwen_design:'qwen3', qwen_custom:'qwen3', qwen_clone:'qwen3' };
+let enabledEngines = null; // null = server without the list (older server.py): show everything, as before
+
+function engineOn(serverKey) {
+  return !enabledEngines || enabledEngines.includes(serverKey);
+}
+
+function applyEnabledEngines(list) {
+  enabledEngines = Array.isArray(list) ? list : null;
+  Object.entries(ENGINE_SERVER_KEY).forEach(([engine, key]) => {
+    const pill = $('pill-' + engine);
+    if (pill) pill.style.display = engineOn(key) ? '' : 'none';
+  });
+  ['kokoro', 'f5', 'chatterbox'].forEach(e => {
+    if (engineOn(e)) $(ENGINE_TO_ROW[e]).classList.add('compatible');
+  });
+  // Hide the "instant" group and its divider when none of its engines runs here
+  const instantGroup = $('grpLabel1').closest('.engine-group');
+  const anyInstant = ['kokoro', 'chatterbox', 'f5', 'fish', 'voxtral'].some(engineOn);
+  instantGroup.style.display = anyInstant ? '' : 'none';
+  instantGroup.nextElementSibling.style.display = anyInstant ? '' : 'none';
+  document.querySelectorAll('.bvs-tab').forEach((btn, i) => {
+    btn.style.display = engineOn(BOOK_SERVER_KEY[BOOK_ENGINES[i]]) ? '' : 'none';
+  });
+  if (!engineOn(BOOK_SERVER_KEY[bookEngine])) {
+    const first = BOOK_ENGINES.find(e => engineOn(BOOK_SERVER_KEY[e]));
+    if (first) switchBookEngine(first);
+  }
+}
+
+function defaultStudioEngine(modelType) {
+  if (engineOn('kokoro')) return 'kokoro';
+  if (engineOn('qwen3')) return { voice_design:'design', custom_voice:'custom', base:'clone' }[modelType] || 'clone';
+  return ['chatterbox', 'f5', 'fish', 'voxtral'].find(engineOn) || 'kokoro';
+}
 
 function selectStudioEngine(engine) {
   currentEngine = engine;
@@ -2190,7 +2228,7 @@ function syncQwenModelSel(models) {
   models.forEach(m => {
     const o = document.createElement('option');
     o.value = m;
-    const label = m.includes('1.7B') ? '1.7B ★' : m.includes('0.6B') ? '0.6B Fast' : m.split('/').pop();
+    const label = m.split('/').pop().replace('Qwen3-TTS-12Hz-', '').replace('-', ' · '); // e.g. "1.7B · Base"
     o.textContent = label;
     sel.appendChild(o);
   });
@@ -2419,7 +2457,7 @@ async function loadModel() {
     if (d.status === 'loaded' || d.status === 'already_loaded') {
       loadedModel  = loadingModel;
       loadingModel = null;
-      lastRtf = loadedModel?.includes('1.7B') ? 3.5 : 4.0; // 0.6B default
+      lastRtf = null; // new model: speed unknown until its first generation
       setPill('loaded', 'ready');
       if ($('loadBtnVis')) { $('loadBtnVis').disabled = false; $('loadBtnVis').textContent = '✓ Loaded'; }
       updateEstimation();
@@ -3161,7 +3199,7 @@ function updateQwenBookWarning() {
 
 function switchBookEngine(engine) {
   bookEngine = engine;
-  const engines = ['kokoro', 'qwen_design', 'fish', 'chatterbox', 'f5', 'qwen_custom', 'qwen_clone'];
+  const engines = BOOK_ENGINES;
   engines.forEach(e => { $(`bvs-${e}`).style.display = e === engine ? '' : 'none'; });
   updateQwenBookWarning();
   document.querySelectorAll('.bvs-tab').forEach((btn, i) => {
@@ -3187,9 +3225,9 @@ function updateEstimation(actualGenSecs, actualAudioSecs) {
   const MAX_AUDIO_S = 1800 / 12;
   const rawAudio  = words / 2.5;
   const audioSecs = Math.min(rawAudio, MAX_AUDIO_S);
-  const genSecs   = audioSecs / lastRtf;
   const capped    = rawAudio > MAX_AUDIO_S;
-  let txt = `~${audioSecs.toFixed(0)}s audio · ~${genSecs.toFixed(0)}s génération`;
+  let txt = `~${audioSecs.toFixed(0)}s audio`;
+  if (lastRtf) txt += ` · ~${(audioSecs / lastRtf).toFixed(0)}s génération`;
   if (capped) txt += ' ⚠ texte trop long (max ~150s)';
   if (actualGenSecs != null)
     txt += `  —  réel : ${actualAudioSecs.toFixed(1)}s audio en ${actualGenSecs.toFixed(1)}s`;
@@ -3780,8 +3818,9 @@ function updateBookStats() {
   const sel = bookChapters.filter(c => c.isContent);
   const chars = sel.reduce((s, c) => s + c.text.length, 0);
   const estAudio = Math.round(chars / 14);
-  const estGen   = Math.round(estAudio / lastRtf);
-  $('bookStats').textContent = `${sel.length} chapitres · ~${estAudio}s audio · ~${estGen}s génération`;
+  let txt = `${sel.length} chapitres · ~${estAudio}s audio`;
+  if (lastRtf) txt += ` · ~${Math.round(estAudio / lastRtf)}s génération`;
+  $('bookStats').textContent = txt;
 }
 
 // Preprocess text for better audiobook narration:
