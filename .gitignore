@@ -13,3 +13,6 @@ models/
 *.log
 .DS_Store
 rustup/
+xtts-env/
+kitten-env/
+local_env.bat

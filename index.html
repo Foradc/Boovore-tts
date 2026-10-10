@@ -1054,6 +1054,21 @@ select option, select optgroup {
             Voxtral
             <span class="ep-tag" style="background:#f59e0b;color:#000">FR★</span>
           </button>
+          <button class="epill" id="pill-kitten" style="--ep-color:#ec4899" onclick="selectStudioEngine('kitten')">
+            <span class="ep-dot" style="background:#ec4899"></span>
+            Kitten 2
+            <span class="ep-tag" style="background:#ec4899">EMO</span>
+          </button>
+          <button class="epill" id="pill-omnivoice" style="--ep-color:#14b8a6" onclick="selectStudioEngine('omnivoice')">
+            <span class="ep-dot" style="background:#14b8a6"></span>
+            OmniVoice
+            <span class="ep-tag" style="background:#14b8a6">FR★</span>
+          </button>
+          <button class="epill" id="pill-pocket" style="--ep-color:#f97316" onclick="selectStudioEngine('pocket')">
+            <span class="ep-dot" style="background:#f97316"></span>
+            Pocket TTS
+            <span class="ep-tag" style="background:#f97316">CPU</span>
+          </button>
         </div>
       </div>
       <div class="engine-divider"></div>
@@ -1260,6 +1275,85 @@ select option, select optgroup {
         Si aucun clip de référence, utilise <code style="font-size:10px;color:var(--accent)">narrator_reference.wav</code>.
       </div>
     </div>
+    <!-- Kitten TTS 2 -->
+    <div class="mode-row" id="rowKitten">
+      <div class="label"><span id="engLblKitten">Kitten TTS 2 — 47 voix, clonage, émotions · Powered by Stellon Labs</span><span class="switch-tag" style="background:#ec4899;color:#fff">EMO</span></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Voix :</label>
+        <select id="kittenVoice" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px;max-width:200px">
+          <option value="French">French</option>
+        </select>
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Style</label>
+        <select id="kittenPreset" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px">
+          <option value="stable">Stable</option>
+          <option value="expressive">Expressif</option>
+        </select>
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0;display:flex;align-items:center;gap:4px;cursor:pointer" title="Normaliseur de Kitten (nombres, dates) : réglé pour l'anglais, il abîme le français">
+          <input type="checkbox" id="kittenNormalize" style="accent-color:var(--accent)"> Normaliser (EN)
+        </label>
+        <label style="font-size:11px;color:var(--dim)">Seed</label>
+        <input type="number" id="kittenSeed" placeholder="auto" style="width:68px;font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px;font-family:monospace">
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Cloner :</label>
+        <input type="file" id="kittenRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:120px;max-width:180px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Texte réf :</label>
+        <input type="text" id="kittenRefText" placeholder="Ce que dit l'extrait, mot pour mot (obligatoire)" style="font-size:11px;flex:3;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:4px 6px">
+      </div>
+      <div class="row" id="kittenTags" style="flex-wrap:wrap;gap:4px;margin-top:6px">
+        <span style="font-size:11px;color:var(--dim);flex-shrink:0" title="Bêta : l'effet varie selon la voix et la phrase">Balises :</span>
+      </div>
+      <div id="kittenStatus" style="font-size:11px;color:var(--dim);margin-top:4px">
+        Nécessite le serveur Kitten (<code style="font-size:10px;color:var(--accent)">start_kitten.bat</code> ou <code style="font-size:10px;color:var(--accent)">python kitten_server.py</code>).
+      </div>
+    </div>
+    <!-- OmniVoice -->
+    <div class="mode-row" id="rowOmnivoice">
+      <div class="label"><span id="engLblOmnivoice">OmniVoice — n°1 en français, clonage et création de voix (k2-fsa, non commercial)</span><span class="switch-tag" style="background:#14b8a6;color:#fff">FR★</span></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Langue</label>
+        <select id="omnivoiceLang" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px"><option value="French" selected>Français</option><option value="English">English</option><option value="">Auto</option><option value="Spanish">Español</option><option value="German">Deutsch</option><option value="Italian">Italiano</option><option value="Portuguese">Português</option><option value="Chinese">中文</option><option value="Japanese">日本語</option></select>
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Vitesse</label>
+        <input type="range" id="omnivoiceSpeed" min="0.5" max="2.0" step="0.05" value="1.0" style="width:64px" oninput="$('omnivoiceSpeedV').textContent=parseFloat(this.value).toFixed(2)">
+        <span id="omnivoiceSpeedV" style="font-size:11px;color:var(--dim);min-width:32px">1.00</span>
+        <label style="font-size:11px;color:var(--dim)">Seed</label>
+        <input type="number" id="omnivoiceSeed" placeholder="auto" style="width:68px;font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px;font-family:monospace">
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Cloner :</label>
+        <input type="file" id="omnivoiceRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:120px;max-width:180px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Texte réf :</label>
+        <input type="text" id="omnivoiceRefText" placeholder="Ce que dit l'extrait, mot pour mot (obligatoire)" style="font-size:11px;flex:3;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:4px 6px">
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0" title="Sans extrait : OmniVoice crée une voix d'après ces critères (tout sur auto = voix au hasard)">Ou créer une voix :</label>
+        <select id="omnivoiceGender" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px"><option value="">Genre : auto</option><option value="Female">Femme</option><option value="Male">Homme</option></select>
+        <select id="omnivoiceAge" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px"><option value="">Âge : auto</option><option value="Child">Enfant</option><option value="Teenager">Ado</option><option value="Young Adult">Jeune adulte</option><option value="Middle-aged">Âge moyen</option><option value="Elderly">Âgé</option></select>
+        <select id="omnivoicePitch" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px"><option value="">Hauteur : auto</option><option value="Very Low Pitch">Très grave</option><option value="Low Pitch">Grave</option><option value="Moderate Pitch">Moyenne</option><option value="High Pitch">Aiguë</option><option value="Very High Pitch">Très aiguë</option></select>
+        <select id="omnivoiceAccent" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px" title="Accents pour l'anglais"><option value="">Accent (anglais) : aucun</option><option value="American Accent">Américain</option><option value="British Accent">Britannique</option><option value="Australian Accent">Australien</option><option value="Canadian Accent">Canadien</option><option value="Indian Accent">Indien</option></select>
+        <label style="font-size:11px;color:var(--dim);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="omnivoiceWhisper" style="accent-color:var(--accent)"> Chuchoté</label>
+      </div>
+      <div id="omnivoiceStatus" style="font-size:11px;color:var(--dim);margin-top:4px">
+        Nécessite le serveur OmniVoice (<code style="font-size:10px;color:var(--accent)">start_omnivoice.bat</code> ou <code style="font-size:10px;color:var(--accent)">python omnivoice_server.py</code>).
+      </div>
+    </div>
+    <!-- Pocket TTS -->
+    <div class="mode-row" id="rowPocket">
+      <div class="label"><span id="engLblPocket">Pocket TTS — rapide sur processeur, 7 langues, 27 voix (Kyutai, CC-BY 4.0)</span><span class="switch-tag" style="background:#f97316;color:#fff">CPU</span></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Langue</label>
+        <select id="pocketLang" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px" onchange="onPocketLangChange('pocket')"><option value="french" selected>Français</option><option value="english">English</option><option value="german">Deutsch</option><option value="spanish">Español</option><option value="italian">Italiano</option><option value="portuguese">Português</option><option value="dutch">Nederlands</option></select>
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0">Voix</label>
+        <select id="pocketVoice" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px"><option value="estelle">estelle</option></select>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
+        <label style="font-size:11px;color:var(--dim);flex-shrink:0" title="Le clonage Pocket demande d'accepter les conditions de Kyutai sur Hugging Face, puis hf auth login">Cloner (option) :</label>
+        <input type="file" id="pocketRefWav" accept="audio/*" style="font-size:11px;color:var(--dim);flex:2;min-width:120px;max-width:180px">
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px">
+        La voix porte l'accent : <b>estelle</b> pour le français. Le clonage demande d'accepter les conditions de Kyutai sur Hugging Face.
+      </div>
+    </div>
     </div><!-- /#innerPanelFR -->
 
     <!-- ── Panel Qwen3-TTS ── -->
@@ -1459,6 +1553,9 @@ select option, select optgroup {
         <button class="bvs-tab" onclick="switchBookEngine('f5')">🟣 F5-TTS</button>
         <button class="bvs-tab" onclick="switchBookEngine('qwen_custom')">⚡ Qwen3 Custom</button>
         <button class="bvs-tab" onclick="switchBookEngine('qwen_clone')">⚡ Qwen3 Clone</button>
+        <button class="bvs-tab" onclick="switchBookEngine('kitten')">🐱 Kitten 2</button>
+        <button class="bvs-tab" onclick="switchBookEngine('omnivoice')">🎙 OmniVoice</button>
+        <button class="bvs-tab" onclick="switchBookEngine('pocket')">🟠 Pocket</button>
       </div>
       <div class="bvs-panel" id="bvs-kokoro" style="display:none">
         <span style="font-size:11px;color:var(--dim)">Voix :</span>
@@ -1587,6 +1684,40 @@ select option, select optgroup {
         <select id="bookQwenLangK" class="bvs-select" style="max-width:110px">
           <option>French</option><option selected>English</option><option>Chinese</option><option>German</option><option>Spanish</option>
         </select>
+      </div>
+      <div class="bvs-panel" id="bvs-omnivoice" style="display:none;flex-direction:column;gap:6px">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--dim)">Langue :</span>
+          <select id="bookOmnivoiceLang" class="bvs-select" style="max-width:120px"><option value="French" selected>Français</option><option value="English">English</option><option value="">Auto</option><option value="Spanish">Español</option><option value="German">Deutsch</option><option value="Italian">Italiano</option><option value="Portuguese">Português</option><option value="Chinese">中文</option><option value="Japanese">日本語</option></select>
+          <span style="font-size:11px;color:var(--dim)">Cloner :</span>
+          <input type="file" id="bookOmnivoiceRef" accept="audio/*" class="bvs-file" onchange="bookOmnivoiceRefFile=this.files[0]">
+          <span style="font-size:11px;color:var(--dim)">Texte réf :</span>
+          <input type="text" id="bookOmnivoiceRefText" placeholder="Transcription exacte de l'extrait" style="font-size:11px;flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:3px 6px">
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--dim)" title="Fixez aussi la graine vocale pour garder la même voix d'un chapitre à l'autre">Ou créer une voix :</span>
+          <select id="bookOmnivoiceGender" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px"><option value="">Genre : auto</option><option value="Female">Femme</option><option value="Male">Homme</option></select>
+        <select id="bookOmnivoiceAge" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px"><option value="">Âge : auto</option><option value="Child">Enfant</option><option value="Teenager">Ado</option><option value="Young Adult">Jeune adulte</option><option value="Middle-aged">Âge moyen</option><option value="Elderly">Âgé</option></select>
+        <select id="bookOmnivoicePitch" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px"><option value="">Hauteur : auto</option><option value="Very Low Pitch">Très grave</option><option value="Low Pitch">Grave</option><option value="Moderate Pitch">Moyenne</option><option value="High Pitch">Aiguë</option><option value="Very High Pitch">Très aiguë</option></select>
+        <select id="bookOmnivoiceAccent" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px" title="Accents pour l'anglais"><option value="">Accent (anglais) : aucun</option><option value="American Accent">Américain</option><option value="British Accent">Britannique</option><option value="Australian Accent">Australien</option><option value="Canadian Accent">Canadien</option><option value="Indian Accent">Indien</option></select>
+        <label style="font-size:11px;color:var(--dim);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="bookOmnivoiceWhisper" style="accent-color:var(--accent)"> Chuchoté</label>
+        </div>
+      </div>
+      <div class="bvs-panel" id="bvs-pocket" style="display:none;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11px;color:var(--dim)">Langue :</span>
+        <select id="bookPocketLang" class="bvs-select" style="max-width:120px" onchange="onPocketLangChange('bookPocket')"><option value="french" selected>Français</option><option value="english">English</option><option value="german">Deutsch</option><option value="spanish">Español</option><option value="italian">Italiano</option><option value="portuguese">Português</option><option value="dutch">Nederlands</option></select>
+        <span style="font-size:11px;color:var(--dim)">Voix :</span>
+        <select id="bookPocketVoice" class="bvs-select" style="max-width:140px"><option value="estelle">estelle</option></select>
+      </div>
+      <div class="bvs-panel" id="bvs-kitten" style="display:none;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11px;color:var(--dim)">Voix :</span>
+        <select id="bookKittenVoice" class="bvs-select" style="max-width:160px">
+          <option value="French">French</option>
+        </select>
+        <span style="font-size:11px;color:var(--dim)">ou cloner :</span>
+        <input type="file" id="bookKittenRef" accept="audio/*" class="bvs-file" onchange="bookKittenRefFile=this.files[0]">
+        <span style="font-size:11px;color:var(--dim)">Texte réf :</span>
+        <input type="text" id="bookKittenRefText" placeholder="Transcription exacte de l'extrait" style="font-size:11px;flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:3px 6px">
       </div>
     </div>
     <!-- Chapter list header (select controls + total) -->
@@ -1785,6 +1916,8 @@ let bookChaptersDone = 0;
 let bookEngine = 'qwen_design';
 let bookCbRefFile = null;
 let bookF5RefFile = null;
+let bookKittenRefFile = null;
+let bookOmnivoiceRefFile = null;
 let bookQwenRefFile = null;
 let bookFishRefFile = null;
 let bookFishRollingRef = null;  // rolling reference: tail of last generated fish chunk
@@ -1922,6 +2055,9 @@ const I18N = {
     engF5: 'F5-TTS FR — clonage vocal français',
     engFish: 'Fish-Speech 1.5 — clonage vocal multilingue',
     engVoxtral: 'Voxtral 4B — TTS français Mistral AI (vLLM-Omni)',
+    engKitten: 'Kitten TTS 2 — 47 voix, clonage, émotions · Powered by Stellon Labs',
+    engOmnivoice: 'OmniVoice — n°1 en français, clonage et création de voix (k2-fsa, non commercial)',
+    engPocket: 'Pocket TTS — rapide sur processeur, 7 langues, 27 voix (Kyutai, CC-BY 4.0)',
     genBtn: 'Générer',
     bookGenBtn: 'Générer la sélection',
     bookPause: 'Pause',
@@ -1938,6 +2074,9 @@ const I18N = {
     engF5: 'F5-TTS FR — French voice cloning',
     engFish: 'Fish-Speech 1.5 — multilingual voice cloning',
     engVoxtral: 'Voxtral 4B — Mistral AI French TTS (vLLM-Omni)',
+    engKitten: 'Kitten TTS 2 — 47 voices, cloning, emotion tags · Powered by Stellon Labs',
+    engOmnivoice: 'OmniVoice — best French scores, cloning and voice design (k2-fsa, non-commercial)',
+    engPocket: 'Pocket TTS — fast on CPU, 7 languages, 27 voices (Kyutai, CC-BY 4.0)',
     genBtn: 'Generate',
     bookGenBtn: 'Generate selection',
     bookPause: 'Pause',
@@ -1965,6 +2104,9 @@ function setLang(lang) {
   $('engLblF5').textContent = t.engF5;
   $('engLblFish').textContent = t.engFish;
   $('engLblVoxtral').textContent = t.engVoxtral;
+  $('engLblKitten').textContent = t.engKitten;
+  $('engLblOmnivoice').textContent = t.engOmnivoice;
+  $('engLblPocket').textContent = t.engPocket;
   // Buttons
   $('genBtnLabel').textContent = t.genBtn;
   $('bookGenBtnLabel').textContent = t.bookGenBtn;
@@ -2085,6 +2227,10 @@ async function fetchStatus() {
       loadedModel = d.model;
       $('modelSel').value = d.model;
       updateQwenBookWarning();
+    } else if (!d.loading && !loadingModel && loadedModel) {
+      // Unloaded on the server (OmniVoice took the GPU): the book run and warnings must know it
+      loadedModel = null;
+      updateQwenBookWarning();
     }
     // After modelSel holds the loaded model — "Load" reads the visible selector
     syncQwenModelSel(d.available_models || []);
@@ -2092,6 +2238,7 @@ async function fetchStatus() {
     renderPresetRefs(d.preset_refs || []);
     setPill(d.loaded ? 'loaded' : 'off', d.loaded ? 'ready' : 'not loaded');
     applyEnabledEngines(d.enabled_engines);
+    populatePocketVoices(d.pocket_voices);
     // Sync visible lang selector
     if ($('langSelVis')) $('langSelVis').value = $('langSel').value || 'French';
     // Update Qwen3 row badges dynamically
@@ -2113,6 +2260,7 @@ async function fetchStatus() {
       _qwenTags.forEach(id => { const el = $(id); if (el) { el.textContent = 'LOAD ▶'; el.style.background = ''; } });
       if ($('grpLabel2')) $('grpLabel2').textContent = appLang === 'en' ? 'Qwen3-TTS · requires loading' : 'Qwen3-TTS · nécessite chargement';
       if ($('loadBtnVis')) $('loadBtnVis').textContent = 'Load';
+      ['rowClone', 'rowChar', 'rowCustom'].forEach(id => { if ($(id)) $(id).classList.remove('compatible'); });
     }
     // Only reset to the default engine on the very first load — never during polls or reloads
     if (!_statusInitDone) {
@@ -2133,15 +2281,15 @@ function switchInnerTab(tab) {
 // ── Engine pill selector ───────────────────────────────────────────────────────
 let currentEngine = 'kokoro'; // selected studio engine
 
-const ENGINE_TO_ITAB = { kokoro:'fr', chatterbox:'fr', f5:'fr', fish:'fr', voxtral:'fr', clone:'qwen', custom:'qwen', design:'qwen' };
-const ENGINE_TO_ROW  = { kokoro:'rowKokoro', chatterbox:'rowChatterbox', f5:'rowF5', fish:'rowFish', voxtral:'rowVoxtral' };
+const ENGINE_TO_ITAB = { kokoro:'fr', chatterbox:'fr', f5:'fr', fish:'fr', voxtral:'fr', kitten:'fr', omnivoice:'fr', pocket:'fr', clone:'qwen', custom:'qwen', design:'qwen' };
+const ENGINE_TO_ROW  = { kokoro:'rowKokoro', chatterbox:'rowChatterbox', f5:'rowF5', fish:'rowFish', voxtral:'rowVoxtral', kitten:'rowKitten', omnivoice:'rowOmnivoice', pocket:'rowPocket' };
 const ENGINE_TO_QWEN = { clone:'voice_clone', custom:'custom', design:'voice_design' };
 
 // Engines the server actually runs (/status enabled_engines, from ENABLED_ENGINES).
 // The others answer 503, so their pills and book tabs are hidden.
-const ENGINE_SERVER_KEY = { kokoro:'kokoro', chatterbox:'chatterbox', f5:'f5', fish:'fish', voxtral:'voxtral', clone:'qwen3', custom:'qwen3', design:'qwen3' };
-const BOOK_ENGINES      = ['kokoro', 'qwen_design', 'fish', 'chatterbox', 'f5', 'qwen_custom', 'qwen_clone']; // .bvs-tab order
-const BOOK_SERVER_KEY   = { kokoro:'kokoro', fish:'fish', chatterbox:'chatterbox', f5:'f5', qwen_design:'qwen3', qwen_custom:'qwen3', qwen_clone:'qwen3' };
+const ENGINE_SERVER_KEY = { kokoro:'kokoro', chatterbox:'chatterbox', f5:'f5', fish:'fish', voxtral:'voxtral', kitten:'kitten', omnivoice:'omnivoice', pocket:'pocket', clone:'qwen3', custom:'qwen3', design:'qwen3' };
+const BOOK_ENGINES      = ['kokoro', 'qwen_design', 'fish', 'chatterbox', 'f5', 'qwen_custom', 'qwen_clone', 'kitten', 'omnivoice', 'pocket']; // .bvs-tab order
+const BOOK_SERVER_KEY   = { kokoro:'kokoro', fish:'fish', chatterbox:'chatterbox', f5:'f5', qwen_design:'qwen3', qwen_custom:'qwen3', qwen_clone:'qwen3', kitten:'kitten', omnivoice:'omnivoice', pocket:'pocket' };
 let enabledEngines = null; // null = server without the list (older server.py): show everything, as before
 
 function engineOn(serverKey) {
@@ -2159,7 +2307,7 @@ function applyEnabledEngines(list) {
   });
   // Hide the "instant" group and its divider when none of its engines runs here
   const instantGroup = $('grpLabel1').closest('.engine-group');
-  const anyInstant = ['kokoro', 'chatterbox', 'f5', 'fish', 'voxtral'].some(engineOn);
+  const anyInstant = ['kokoro', 'chatterbox', 'f5', 'fish', 'voxtral', 'kitten', 'omnivoice', 'pocket'].some(engineOn);
   instantGroup.style.display = anyInstant ? '' : 'none';
   instantGroup.nextElementSibling.style.display = anyInstant ? '' : 'none';
   document.querySelectorAll('.bvs-tab').forEach((btn, i) => {
@@ -2174,7 +2322,7 @@ function applyEnabledEngines(list) {
 function defaultStudioEngine(modelType) {
   if (engineOn('kokoro')) return 'kokoro';
   if (engineOn('qwen3')) return { voice_design:'design', custom_voice:'custom', base:'clone' }[modelType] || 'clone';
-  return ['chatterbox', 'f5', 'fish', 'voxtral'].find(engineOn) || 'kokoro';
+  return ['omnivoice', 'pocket', 'chatterbox', 'f5', 'fish', 'voxtral', 'kitten'].find(engineOn) || 'kokoro';
 }
 
 function selectStudioEngine(engine) {
@@ -2199,6 +2347,8 @@ function selectStudioEngine(engine) {
     document.querySelectorAll('#innerPanelFR .mode-row').forEach(r => r.classList.remove('eng-active'));
     const rowId = ENGINE_TO_ROW[engine];
     if (rowId && $(rowId)) $(rowId).classList.add('eng-active');
+    if (engine === 'kitten') loadKittenStatus();
+    if (engine === 'omnivoice') loadOmnivoiceStatus();
   } else {
     // Activate Qwen mode
     const qwenMode = ENGINE_TO_QWEN[engine];
@@ -2213,6 +2363,9 @@ async function generateCurrent() {
     case 'f5':         await generateF5();           break;
     case 'fish':       await generateFish();         break;
     case 'voxtral':    await generateVoxtral();      break;
+    case 'kitten':     await generateKitten();       break;
+    case 'omnivoice':  await generateOmnivoice();    break;
+    case 'pocket':     await generatePocket();       break;
     default: break;
   }
 }
@@ -2435,6 +2588,201 @@ async function generateVoxtral() {
     pb.classList.remove('spin'); pb.style.width = '0%';
   }
   busy = false; setPlayBtns(false);
+}
+
+// ── Kitten TTS 2 ─────────────────────────────────────────────────────────────
+// The 20 tags Kitten recognises; anything else in brackets is read aloud
+const KITTEN_EMOTIONS = ['sad', 'nervous', 'joyful', 'tender', 'angry', 'excited', 'surprised', 'stern', 'contemplative', 'mundane'];
+const KITTEN_EVENTS   = ['laugh', 'sigh', 'gasp', 'sob', 'giggle', 'pause', 'um', 'scoff', 'gulp', 'growl'];
+let kittenReady = false;
+let kittenPollTimer = null;
+let kittenDownPolls = 0;
+
+function pollKittenLater() {
+  // One pending poll at most, however often the user switches engines
+  clearTimeout(kittenPollTimer);
+  kittenPollTimer = setTimeout(loadKittenStatus, 5000);
+}
+
+async function loadKittenStatus() {
+  if (!$('kittenTags').dataset.built) buildKittenTags();
+  if (kittenReady) return;
+  try {
+    const d = await fetch('/kitten/status').then(r => r.json());
+    if (!d.available) {
+      $('kittenStatus').textContent = d.detail;
+      // The launcher starts Kitten next to Boovore and it may still be booting: retry for about a minute
+      if (++kittenDownPolls < 12) pollKittenLater();
+      return;
+    }
+    if (!d.loaded) {
+      $('kittenStatus').textContent = d.error ? 'Kitten TTS 2 : ' + d.error : 'Kitten TTS 2 se charge… (environ 30 s)';
+      if (!d.error) pollKittenLater();
+      return;
+    }
+    ['kittenVoice', 'bookKittenVoice'].forEach(id => {
+      const sel = $(id), keep = sel.value || 'French';
+      sel.innerHTML = '';
+      d.voices.forEach(v => { const o = document.createElement('option'); o.value = o.textContent = v; sel.appendChild(o); });
+      sel.value = d.voices.includes(keep) ? keep : 'French';
+    });
+    const where = d.device === 'cpu' ? 'processeur (compte ~10 s de calcul par seconde d\'audio)' : d.device;
+    $('kittenStatus').textContent = `Prêt sur ${where} · ${d.voices.length} voix · en français, garde la voix French ou clone un extrait français.`;
+    kittenReady = true;
+  } catch { $('kittenStatus').textContent = 'Statut de Kitten TTS 2 indisponible.'; }
+}
+
+function buildKittenTags() {
+  const box = $('kittenTags');
+  const chip = (label, title, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'ch-dl'; b.style.fontSize = '10px';
+    b.textContent = label; b.title = title; b.onclick = onClick;
+    box.appendChild(b);
+  };
+  KITTEN_EMOTIONS.forEach(e => chip(`[${e}]`, 'Émotion de toute la phrase (placée en tête)', () => kittenSetEmotion(e)));
+  KITTEN_EVENTS.forEach(e => chip(`<${e}>`, 'Son inséré au curseur', () => kittenInsertAtCursor(`<${e}> `)));
+  chip('(((…)))', 'Insiste sur le texte sélectionné', kittenEmphasis);
+  box.dataset.built = '1';
+}
+
+function kittenSetEmotion(emotion) {
+  // Only one leading emotion counts, so replace the current one
+  const ta = $('textIn');
+  ta.value = `[${emotion}] ` + ta.value.replace(/^\s*\[[a-z]+\]\s*/i, '');
+  ta.focus(); updateEstimation();
+}
+
+function kittenInsertAtCursor(snippet) {
+  const ta = $('textIn'), a = ta.selectionStart, b = ta.selectionEnd;
+  ta.value = ta.value.slice(0, a) + snippet + ta.value.slice(b);
+  ta.selectionStart = ta.selectionEnd = a + snippet.length;
+  ta.focus(); updateEstimation();
+}
+
+function kittenEmphasis() {
+  const ta = $('textIn'), a = ta.selectionStart, b = ta.selectionEnd;
+  const picked = ta.value.slice(a, b);
+  ta.value = ta.value.slice(0, a) + `(((${picked})))` + ta.value.slice(b);
+  ta.selectionStart = ta.selectionEnd = a + 3 + picked.length;
+  ta.focus(); updateEstimation();
+}
+
+async function generateKitten() {
+  if (busy) return;
+  const text = $('textIn').value.trim();
+  if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
+  const refFile = $('kittenRefWav').files[0];
+  const refText = $('kittenRefText').value.trim();
+  if (refFile && !refText) { showMsg('err', 'Pour cloner avec Kitten, recopie aussi ce que dit l\'extrait.'); return; }
+  const fd = new FormData();
+  fd.append('text', text);
+  fd.append('voice', $('kittenVoice').value);
+  fd.append('preset', $('kittenPreset').value);
+  fd.append('normalize', $('kittenNormalize').checked);
+  const seed = $('kittenSeed').value ? parseInt($('kittenSeed').value, 10) : null;
+  if (seed !== null && !isNaN(seed)) fd.append('seed', seed);
+  if (refFile) { fd.append('ref_wav', refFile); fd.append('ref_text', refText); }
+  await runStudioEngine('/generate/kitten', fd, 'Kitten');
+}
+
+// ── Studio flow shared by Kitten, OmniVoice and Pocket (FormData in, WAV out) ──
+async function runStudioEngine(endpoint, fd, label) {
+  hideMsg();
+  busy = true; setPlayBtns(true);
+  $('results').classList.add('show');
+  $('player').parentElement.style.display = 'none';
+  $('waveInd').classList.remove('off');
+  $('pbarWrap').classList.add('show');
+  const pb = $('pbar'); pb.style.width = ''; pb.classList.add('spin');
+  resetMetrics();
+  const t0 = performance.now();
+  try {
+    const res = await fetch(endpoint, { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `Erreur ${label}`); }
+    const blob = new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+    const genSecs = (performance.now() - t0) / 1000;
+    setPlayer(blob);
+    $('player').play().catch(() => {});
+    pb.classList.remove('spin'); pb.style.width = '100%';
+    $('waveInd').classList.add('off');
+    $('mClient').textContent = genSecs.toFixed(1) + 's';
+  } catch(e) {
+    showMsg('err', e.message);
+    pb.classList.remove('spin'); pb.style.width = '0%';
+  }
+  busy = false; setPlayBtns(false);
+}
+
+// ── OmniVoice ────────────────────────────────────────────────────────────────
+// Voice design takes English attribute names joined by commas (as in OmniVoice's own demo)
+function omnivoiceInstruct(prefix) {
+  const parts = ['Gender', 'Age', 'Pitch', 'Accent'].map(k => $(prefix + k).value).filter(Boolean);
+  if ($(prefix + 'Whisper').checked) parts.push('Whisper');
+  return parts.join(', ');
+}
+
+async function loadOmnivoiceStatus() {
+  try {
+    const d = await fetch('/omnivoice/status').then(r => r.json());
+    if (!d.available) { $('omnivoiceStatus').textContent = d.detail; return; }
+    const where = d.loaded ? `chargé sur ${d.device === 'cuda' ? 'la carte graphique' : 'le processeur (lent)'}` : 'se charge à la première génération (~10 s)';
+    $('omnivoiceStatus').textContent = `OmniVoice ${where}. Il prend la carte graphique quand il en a besoin : Qwen3 est alors déchargé (rechargez-le avec Load).`;
+  } catch { $('omnivoiceStatus').textContent = 'Statut d\'OmniVoice indisponible.'; }
+}
+
+async function generateOmnivoice() {
+  if (busy) return;
+  const text = $('textIn').value.trim();
+  if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
+  const refFile = $('omnivoiceRefWav').files[0];
+  const refText = $('omnivoiceRefText').value.trim();
+  if (refFile && !refText) { showMsg('err', 'Pour cloner avec OmniVoice, recopie aussi ce que dit l\'extrait.'); return; }
+  const fd = new FormData();
+  fd.append('text', text);
+  fd.append('language', $('omnivoiceLang').value);
+  fd.append('speed', $('omnivoiceSpeed').value);
+  const seed = $('omnivoiceSeed').value ? parseInt($('omnivoiceSeed').value, 10) : null;
+  if (seed !== null && !isNaN(seed)) fd.append('seed', seed);
+  if (refFile) { fd.append('ref_wav', refFile); fd.append('ref_text', refText); }
+  else fd.append('instruct', omnivoiceInstruct('omnivoice'));
+  await runStudioEngine('/generate/omnivoice', fd, 'OmniVoice');
+  // Qwen3 may have been unloaded to make room on the GPU
+  fetchStatus(); loadOmnivoiceStatus();
+}
+
+// ── Pocket TTS ───────────────────────────────────────────────────────────────
+const POCKET_DEFAULT_VOICE = { french:'estelle', english:'alba', german:'juergen', spanish:'lola', italian:'giovanni', portuguese:'rafael', dutch:'daan' };
+
+function populatePocketVoices(voices) {
+  if (!voices || !voices.length) return;
+  ['pocketVoice', 'bookPocketVoice'].forEach(id => {
+    const sel = $(id);
+    if (sel.options.length > 1) return;  // filled already (status is polled)
+    const keep = sel.value;
+    sel.innerHTML = '';
+    voices.forEach(v => { const o = document.createElement('option'); o.value = o.textContent = v; sel.appendChild(o); });
+    sel.value = voices.includes(keep) ? keep : 'estelle';
+  });
+}
+
+function onPocketLangChange(prefix) {
+  const lang = $(prefix + 'Lang').value;
+  const voice = POCKET_DEFAULT_VOICE[lang];
+  if (voice) $(prefix + 'Voice').value = voice;
+}
+
+async function generatePocket() {
+  if (busy) return;
+  const text = $('textIn').value.trim();
+  if (!text) { showMsg('err', 'Entre du texte d\'abord.'); return; }
+  const fd = new FormData();
+  fd.append('text', text);
+  fd.append('language', $('pocketLang').value);
+  fd.append('voice', $('pocketVoice').value);
+  const refFile = $('pocketRefWav').files[0];
+  if (refFile) fd.append('ref_wav', refFile);
+  await runStudioEngine('/generate/pocket', fd, 'Pocket TTS');
 }
 
 async function loadModel() {
@@ -3199,6 +3547,7 @@ function updateQwenBookWarning() {
 
 function switchBookEngine(engine) {
   bookEngine = engine;
+  if (engine === 'kitten') loadKittenStatus();
   const engines = BOOK_ENGINES;
   engines.forEach(e => { $(`bvs-${e}`).style.display = e === engine ? '' : 'none'; });
   updateQwenBookWarning();
@@ -3865,6 +4214,13 @@ async function generateBook() {
   if (bookEngine === 'qwen_design' && loadedModel && !loadedModel.includes('VoiceDesign')) {
     showMsg('err', 'Voice Design nécessite le modèle 1.7B-VoiceDesign (onglet TTS → Qwen3-TTS → Voice Design → LOAD).'); return;
   }
+  // Otherwise every chunk would come back 400 from the Kitten server, one after another
+  if (bookEngine === 'omnivoice' && bookOmnivoiceRefFile && !$('bookOmnivoiceRefText').value.trim()) {
+    showMsg('err', 'Pour cloner avec OmniVoice, recopie aussi ce que dit l\'extrait (champ « Texte réf »).'); return;
+  }
+  if (bookEngine === 'kitten' && bookKittenRefFile && !$('bookKittenRefText').value.trim()) {
+    showMsg('err', 'Pour cloner avec Kitten, recopie aussi ce que dit l\'extrait (champ « Texte réf »).'); return;
+  }
 
   const toGen = bookChapters.filter(c => c.isContent && c.status !== 'done');
   if (!toGen.length) return;
@@ -4072,6 +4428,46 @@ async function generateChunk(rawText) {
     if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate/f5_fr', { method: 'POST', body: fd });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Erreur F5'); }
+    return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+  }
+
+  if (bookEngine === 'omnivoice') {
+    const fd = new FormData();
+    fd.append('text', text);
+    fd.append('language', $('bookOmnivoiceLang').value);
+    if (bookOmnivoiceRefFile) {
+      fd.append('ref_wav', bookOmnivoiceRefFile);
+      fd.append('ref_text', $('bookOmnivoiceRefText').value.trim());
+    } else {
+      fd.append('instruct', omnivoiceInstruct('bookOmnivoice'));
+    }
+    if (bookSeed !== null) fd.append('seed', bookSeed);
+    const res = await fetch('/generate/omnivoice', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Erreur OmniVoice'); }
+    return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+  }
+
+  if (bookEngine === 'pocket') {
+    const fd = new FormData();
+    fd.append('text', text);
+    fd.append('language', $('bookPocketLang').value);
+    fd.append('voice', $('bookPocketVoice').value);
+    const res = await fetch('/generate/pocket', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Erreur Pocket TTS'); }
+    return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
+  }
+
+  if (bookEngine === 'kitten') {
+    const fd = new FormData();
+    fd.append('text', text);
+    if (bookKittenRefFile) fd.append('ref_wav', bookKittenRefFile);
+    const kittenRefText = $('bookKittenRefText')?.value.trim();
+    if (kittenRefText) fd.append('ref_text', kittenRefText);
+    fd.append('voice', $('bookKittenVoice').value);
+    fd.append('preset', expressive ? 'expressive' : 'stable');
+    if (bookSeed !== null) fd.append('seed', bookSeed);
+    const res = await fetch('/generate/kitten', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Erreur Kitten'); }
     return new Blob([await res.arrayBuffer()], { type: 'audio/wav' });
   }
 

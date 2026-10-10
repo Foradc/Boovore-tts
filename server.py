@@ -38,6 +38,17 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 _VOXTRAL_URL   = os.environ.get("VOXTRAL_URL", "http://localhost:8000")
 _VOXTRAL_MODEL = "mistralai/Voxtral-4B-TTS-2603"
 
+# ── Kitten TTS 2 (KittenML, own env: needs transformers 5.x) ─────────────────
+_KITTEN_URL = os.environ.get("KITTEN_URL", "http://127.0.0.1:7862")
+# CPU generation runs at about 0.1x real time, so a long book chunk can take many minutes
+_KITTEN_TIMEOUT = float(os.environ.get("KITTEN_TIMEOUT", "3600"))
+
+# ── OmniVoice (k2-fsa, own env: transformers 5.x) ────────────────────────────
+_OMNIVOICE_URL = os.environ.get("OMNIVOICE_URL", "http://127.0.0.1:7863")
+_OMNIVOICE_TIMEOUT = float(os.environ.get("OMNIVOICE_TIMEOUT", "1800"))
+# OmniVoice in fp16 needs about 2 GB; below this much free VRAM, Qwen3 is unloaded first
+_OMNIVOICE_MIN_FREE_VRAM = 3 * 1024**3
+
 # ── Fish-Speech ───────────────────────────────────────────────────────────────
 FISH_SPEECH_REPO = Path("/tmp/fish-speech")
 FISH_SPEECH_MODEL = Path("/root/fish-speech-model")
@@ -98,7 +109,16 @@ ENABLED_ENGINES: set[str] | None = (
 def _engine_enabled(name: str) -> bool:
     return ENABLED_ENGINES is None or name in ENABLED_ENGINES
 
-_ALL_ENGINES = ("qwen3", "kokoro", "f5", "chatterbox", "fish", "voxtral")
+_ALL_ENGINES = ("qwen3", "kokoro", "f5", "chatterbox", "fish", "voxtral", "kitten", "omnivoice", "pocket")
+# In-process engines are only offered when their package is installed, so ENABLED_ENGINES=all
+# does not show buttons that would fail. Engines behind their own server are listed as enabled.
+_ENGINE_PACKAGES = {"kokoro": "kokoro", "f5": "f5_tts", "chatterbox": "chatterbox", "pocket": "pocket_tts"}
+
+
+def _engine_installed(name: str) -> bool:
+    import importlib.util
+    package = _ENGINE_PACKAGES.get(name)
+    return package is None or importlib.util.find_spec(package) is not None
 
 # ── Kokoro TTS (multilingual) ─────────────────────────────────────────────────
 _kokoro_pipelines: dict[str, object] = {}
@@ -141,6 +161,55 @@ def _get_kokoro(voice: str = "ff_siwis"):
             from kokoro import KPipeline
             _kokoro_pipelines[lang_code] = KPipeline(lang_code=lang_code)
     return _kokoro_pipelines[lang_code]
+
+# ── Pocket TTS (Kyutai, CPU) ─────────────────────────────────────────────────
+# One model per language (~100M parameters each), 27 built-in voices usable with any language.
+POCKET_LANGUAGES = ("french", "english", "german", "spanish", "italian", "portuguese", "dutch")
+_pocket_models: dict[str, object] = {}
+_pocket_states: OrderedDict = OrderedDict()  # (language, voice name or clip hash) -> voice state
+_POCKET_STATE_CACHE = 16
+_pocket_lock = threading.Lock()
+# Importing pocket_tts calls torch.set_num_threads(1) for the whole process, which would also slow
+# Kokoro or F5 on CPU, so the thread count is restored after import. Measured on an i7-10750H
+# (French): 1 thread 2.4x real time, 2 threads 2.7x, 6 threads 2.0x. Pocket leaves the thread count
+# alone unless POCKET_THREADS is set: switching it process-wide would also slow a concurrent job.
+_POCKET_THREADS = int(os.environ.get("POCKET_THREADS", "0"))
+_pocket_voice_list: list[str] | None = None
+
+
+def _pocket_voices() -> list[str]:
+    """Built-in voice names; imported once (slow the first time), so call it off the event loop."""
+    global _pocket_voice_list
+    if _pocket_voice_list is None:
+        try:
+            from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
+            _pocket_voice_list = sorted(_ORIGINS_OF_PREDEFINED_VOICES)
+        except ImportError:
+            _pocket_voice_list = []
+    return _pocket_voice_list
+
+
+def _get_pocket(language: str):
+    """Caller holds _pocket_lock."""
+    if language not in _pocket_models:
+        threads = torch.get_num_threads()
+        from pocket_tts import TTSModel
+        torch.set_num_threads(threads)
+        print(f"Loading Pocket TTS ({language})…")
+        _pocket_models[language] = TTSModel.load_model(language=language)
+    return _pocket_models[language]
+
+
+def _pocket_state(model, key: tuple, prompt):
+    """Voice states take seconds to build (minutes for a long clip): keep the recent ones."""
+    if key in _pocket_states:
+        _pocket_states.move_to_end(key)
+        return _pocket_states[key]
+    state = model.get_state_for_audio_prompt(prompt)
+    _pocket_states[key] = state
+    if len(_pocket_states) > _POCKET_STATE_CACHE:
+        _pocket_states.popitem(last=False)
+    return state
 
 # ── Chatterbox TTS (ResembleAI) ───────────────────────────────────────────────
 _chatterbox_model = None
@@ -309,6 +378,7 @@ app = FastAPI(title="Faster Qwen3-TTS Demo")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 _model_cache: OrderedDict[str, FasterQwen3TTS] = OrderedDict()
+_background_tasks: set = set()  # keeps fire-and-forget tasks referenced until they finish
 _model_cache_max: int = int(os.environ.get("MODEL_CACHE_SIZE", "2"))
 _active_model_name: str | None = None
 _loading = False
@@ -465,8 +535,11 @@ async def get_status():
         "kokoro_voices": KOKORO_VOICES_FR,
         "voxtral_url": _VOXTRAL_URL,
         "voxtral_model": _VOXTRAL_MODEL,
+        "pocket_voices": await asyncio.to_thread(_pocket_voices),
+        "pocket_languages": POCKET_LANGUAGES,
         "enabled_engines": [e for e in _ALL_ENGINES
-                            if _engine_enabled(e) and (e != "qwen3" or FasterQwen3TTS is not None)],
+                            if _engine_enabled(e) and _engine_installed(e)
+                            and (e != "qwen3" or FasterQwen3TTS is not None)],
     }
 
 
@@ -513,6 +586,7 @@ async def load_model(model_id: str = Form(...)):
         finally:
             _loading = False
     async with _generation_lock:
+        await _unload_gpu_sidecars()
         await asyncio.to_thread(_do_load)
     return {"status": "loaded", "model": model_id}
 
@@ -559,6 +633,8 @@ async def generate_stream(
 
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    worker_done = threading.Event()
 
     def run_generation():
         try:
@@ -648,10 +724,12 @@ async def generate_stream(
             loop.call_soon_threadsafe(queue.put_nowait, None)
             if tmp_path and os.path.exists(tmp_path) and not tmp_is_cached:
                 os.unlink(tmp_path)
+            worker_done.set()
 
     async def sse():
         global _generation_waiters
         lock_acquired = False
+        worker_started = False
         _generation_waiters += 1
         people_ahead = _generation_waiters - 1 + (1 if _generation_lock.locked() else 0)
         try:
@@ -661,6 +739,7 @@ async def generate_stream(
             lock_acquired = True
             _generation_waiters -= 1
             threading.Thread(target=run_generation, daemon=True).start()
+            worker_started = True
             while True:
                 msg = await queue.get()
                 if msg is None:
@@ -669,7 +748,15 @@ async def generate_stream(
         except asyncio.CancelledError:
             pass
         finally:
-            if lock_acquired:
+            if lock_acquired and worker_started and not worker_done.is_set():
+                # Client went away mid-generation: release the lock only once the worker stops
+                async def _release_when_done():
+                    await asyncio.to_thread(worker_done.wait)
+                    _generation_lock.release()
+                task = asyncio.get_running_loop().create_task(_release_when_done())
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+            elif lock_acquired:
                 _generation_lock.release()
             else:
                 _generation_waiters -= 1
@@ -1135,6 +1222,231 @@ async def generate_voxtral(
         return Response(content=wav_bytes, media_type="audio/wav")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Kitten TTS 2 (proxy to kitten_server.py) ────────────────────────────────
+
+_KITTEN_DOWN_MSG = (
+    "Kitten TTS 2 server not reachable at {url}. Start it with start_kitten.bat "
+    "(Windows) or: python kitten_server.py"
+)
+
+
+# ─── Engines behind their own server (Kitten, OmniVoice) ─────────────────────
+
+async def _sidecar_status(engine: str, url: str, down_msg: str) -> dict:
+    """Load state of a sidecar; never fails, so the UI can explain what to start."""
+    if not _engine_enabled(engine):
+        return {"available": False, "detail": f"{engine} engine not enabled on this server."}
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(f"{url}/status")
+        return {"available": True, **r.json()}
+    except Exception:
+        return {"available": False, "detail": down_msg}
+
+
+async def _sidecar_generate(url: str, data: dict, files, timeout: float, name: str, down_msg: str) -> Response:
+    try:
+        import httpx as _httpx
+    except ImportError:
+        raise HTTPException(status_code=503, detail="httpx not installed. Run: pip install httpx")
+    try:
+        async with _httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post(f"{url}/generate", data=data, files=files)
+    except _httpx.ConnectError:
+        raise HTTPException(status_code=503, detail=down_msg)
+    except _httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail=f"{name} took longer than {timeout:.0f} s.")
+    except _httpx.HTTPError as e:
+        # e.g. the sidecar was killed mid-generation (out of memory, window closed)
+        raise HTTPException(status_code=502, detail=f"{name} server stopped answering: {type(e).__name__}")
+    if r.status_code != 200:
+        try:
+            detail = r.json().get("detail", r.text)
+        except ValueError:
+            detail = r.text
+        # FastAPI validation errors carry a list; the UI expects a sentence
+        raise HTTPException(status_code=r.status_code, detail=detail if isinstance(detail, str) else json.dumps(detail))
+    return Response(content=r.content, media_type="audio/wav")
+
+
+async def _read_ref_upload(ref_wav: UploadFile | None):
+    """Multipart file tuple for httpx, or None; enforces the shared upload limit."""
+    if not (ref_wav and ref_wav.filename):
+        return None
+    ref_bytes = await ref_wav.read()
+    if len(ref_bytes) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=400, detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(ref_bytes) / 1024 / 1024))
+    return {"ref_wav": (ref_wav.filename, ref_bytes, ref_wav.content_type or "audio/wav")}
+
+
+@app.get("/kitten/status")
+async def kitten_status():
+    return await _sidecar_status("kitten", _KITTEN_URL, _KITTEN_DOWN_MSG.format(url=_KITTEN_URL))
+
+
+@app.post("/generate/kitten")
+async def generate_kitten(
+    text: str = Form(...),
+    voice: str = Form("French"),
+    ref_wav: UploadFile = File(None),
+    ref_text: str = Form(""),
+    preset: str = Form("stable"),
+    normalize: bool = Form(False),
+    seed: Optional[int] = Form(None),
+):
+    """Kitten TTS 2: 47 built-in voices, cloning from 5-30 s, [emotion] / <event> / (((emphasis))) tags."""
+    if not _engine_enabled("kitten"):
+        raise HTTPException(status_code=503, detail="Kitten engine not enabled on this server.")
+    files = await _read_ref_upload(ref_wav)
+    # Kitten's own normalizer is English-only; for French text use Boovore's prosody preprocessing.
+    # The [emotion], <event> and (((emphasis))) tags pass through it untouched.
+    if not normalize and (voice == "French" or files):
+        text = preprocess_french(text)
+    data = {"text": text, "voice": voice, "ref_text": ref_text, "preset": preset,
+            "normalize": str(normalize).lower()}
+    if seed is not None:
+        data["seed"] = str(seed)
+    return await _sidecar_generate(_KITTEN_URL, data, files, _KITTEN_TIMEOUT, "Kitten TTS 2",
+                                   _KITTEN_DOWN_MSG.format(url=_KITTEN_URL))
+
+
+# ─── OmniVoice (proxy to omnivoice_server.py, shares the GPU with Qwen3) ──────
+
+_OMNIVOICE_DOWN_MSG = (
+    "OmniVoice server not reachable at {url}. Start it with start_omnivoice.bat "
+    "(Windows) or: python omnivoice_server.py"
+)
+
+
+def _free_gpu_for(min_free: int):
+    """Unload the Qwen3 models when another engine needs the card (a 6 GB card holds one model)."""
+    global _active_model_name
+    if not torch.cuda.is_available() or not _model_cache:
+        return
+    free, _ = torch.cuda.mem_get_info()
+    if free >= min_free:
+        return
+    unloaded = list(_model_cache)
+    _model_cache.clear()
+    _active_model_name = None
+    gc.collect()
+    torch.cuda.empty_cache()
+    print(f"GPU needed by another engine — unloaded Qwen3: {unloaded}")
+
+
+async def _unload_gpu_sidecars():
+    """Before Qwen3 loads, ask OmniVoice to give the GPU back (best effort)."""
+    if not _engine_enabled("omnivoice"):
+        return
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=15.0) as client:
+            await client.post(f"{_OMNIVOICE_URL}/unload")
+    except Exception:
+        pass
+
+
+@app.get("/omnivoice/status")
+async def omnivoice_status():
+    return await _sidecar_status("omnivoice", _OMNIVOICE_URL, _OMNIVOICE_DOWN_MSG.format(url=_OMNIVOICE_URL))
+
+
+@app.post("/generate/omnivoice")
+async def generate_omnivoice(
+    text: str = Form(...),
+    language: str = Form(""),
+    ref_wav: UploadFile = File(None),
+    ref_text: str = Form(""),
+    instruct: str = Form(""),
+    speed: float = Form(1.0),
+    seed: Optional[int] = Form(None),
+):
+    """OmniVoice: cloning (ref_wav + ref_text), voice design (instruct) or an automatic voice."""
+    if not _engine_enabled("omnivoice"):
+        raise HTTPException(status_code=503, detail="OmniVoice engine not enabled on this server.")
+    files = await _read_ref_upload(ref_wav)
+    if language.lower() in ("french", "fr"):
+        text = preprocess_french(text)
+    data = {"text": text, "language": language, "ref_text": ref_text, "instruct": instruct,
+            "speed": str(max(0.5, min(2.0, speed)))}
+    if seed is not None:
+        data["seed"] = str(seed)
+    # The GPU lock covers the whole call: Qwen3 cannot load or generate next to OmniVoice
+    async with _generation_lock:
+        sidecar = await _sidecar_status("omnivoice", _OMNIVOICE_URL, "")
+        if not (sidecar.get("loaded") and sidecar.get("device") == "cuda"):
+            await asyncio.to_thread(_free_gpu_for, _OMNIVOICE_MIN_FREE_VRAM)
+        return await _sidecar_generate(_OMNIVOICE_URL, data, files, _OMNIVOICE_TIMEOUT, "OmniVoice",
+                                       _OMNIVOICE_DOWN_MSG.format(url=_OMNIVOICE_URL))
+
+
+# ─── Pocket TTS (in-process, CPU) ─────────────────────────────────────────────
+
+@app.post("/generate/pocket")
+async def generate_pocket(
+    text: str = Form(...),
+    language: str = Form("french"),
+    voice: str = Form(""),
+    ref_wav: UploadFile = File(None),
+):
+    """Pocket TTS: 7 languages, 27 built-in voices, cloning from a clip (needs Kyutai's gated weights)."""
+    if not _engine_enabled("pocket") or not _engine_installed("pocket"):
+        raise HTTPException(status_code=503, detail="Pocket TTS not available. Run: pip install pocket-tts")
+    if language not in POCKET_LANGUAGES:
+        raise HTTPException(status_code=400, detail=f"Unknown Pocket TTS language: {language}")
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Empty text.")
+    ref_path, key = None, None
+    if ref_wav and ref_wav.filename:
+        ref_bytes = await ref_wav.read()
+        if len(ref_bytes) > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=400, detail=_AUDIO_TOO_LARGE_MSG.format(size_mb=len(ref_bytes) / 1024 / 1024))
+        ref_path = _get_cached_ref_path(ref_bytes)
+        key = (language, hashlib.sha1(ref_bytes).hexdigest())
+    else:
+        from pocket_tts.default_parameters import DEFAULT_VOICE_FOR_LANGUAGE, DEFAULT_VOICE_FALLBACK
+        voice = voice or DEFAULT_VOICE_FOR_LANGUAGE.get(language, DEFAULT_VOICE_FALLBACK)
+        if voice not in await asyncio.to_thread(_pocket_voices):
+            raise HTTPException(status_code=400, detail=f"Unknown Pocket TTS voice: {voice}")
+        key = (language, voice)
+    if language == "french":
+        text = preprocess_french(text)
+
+    def _run():
+        with _pocket_lock:
+            model = _get_pocket(language)
+            try:
+                state = _pocket_state(model, key, ref_path or voice)
+            except ValueError as e:
+                if not ref_path:
+                    raise
+                if "voice cloning" in str(e):  # cloning weights are gated on Hugging Face
+                    raise HTTPException(status_code=400, detail=(
+                        "Pocket TTS cloning needs Kyutai's gated weights: accept the terms on "
+                        "https://huggingface.co/kyutai/pocket-tts, then log in on this machine (hf auth login). "
+                        "The built-in voices work without it."))
+                raise HTTPException(status_code=400, detail=f"Pocket TTS could not use this clip: {e}")
+            threads = torch.get_num_threads()
+            if _POCKET_THREADS:
+                torch.set_num_threads(_POCKET_THREADS)
+            try:
+                audio = model.generate_audio(state, text.strip())
+            finally:
+                torch.set_num_threads(threads)
+        buf = io.BytesIO()
+        sf.write(buf, audio.detach().cpu().numpy(), model.sample_rate, format="WAV")
+        return buf.getvalue()
+
+    try:
+        wav_bytes = await asyncio.to_thread(_run)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pocket TTS: {e}")
+    return Response(content=wav_bytes, media_type="audio/wav")
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
