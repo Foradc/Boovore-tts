@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/banner.png" alt="Boovore — six moteurs de synthèse vocale open source dans un seul studio" width="100%">
+  <img src=".github/banner.png" alt="Boovore — neuf moteurs de synthèse vocale open source dans un seul studio" width="100%">
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
   <a href="https://github.com/Foradc/Boovore-tts#readme">English</a> · <b>Français</b>
 </p>
 
-**Boovore** est un studio de synthèse vocale (TTS) à héberger soi-même. Il réunit six moteurs open source derrière une seule page web : on écoute la même phrase dans chaque moteur, on clone une voix à partir d'un court extrait, et on transforme un `.txt`, un `.pdf` ou un `.epub` en livre audio découpé en chapitres.
+**Boovore** est un studio de synthèse vocale (TTS) à héberger soi-même. Il réunit neuf moteurs open source derrière une seule page web : on écoute la même phrase dans chaque moteur, on clone une voix à partir d'un court extrait, et on transforme un `.txt`, un `.pdf` ou un `.epub` en livre audio découpé en chapitres.
 
 Il est pensé d'abord pour le français, parce que les bonnes voix françaises sont rares en TTS open source. Il tourne sur la machine dont vous disposez : un Space CPU gratuit, un portable avec 6 Go de VRAM ou un serveur à 24 Go.
 
@@ -25,10 +25,10 @@ Il est pensé d'abord pour le français, parce que les bonnes voix françaises s
 
 ## Pourquoi Boovore ?
 
-- **Comparer les moteurs en un clic.** Même texte, même page, six moteurs. On choisit sa voix à l'oreille, sans installer six dépôts.
+- **Comparer les moteurs en un clic.** Même texte, même page, neuf moteurs. On choisit sa voix à l'oreille, sans installer neuf dépôts.
 - **Des livres entiers.** Importez un `.txt`, un `.pdf` ou un `.epub`. Boovore détecte les chapitres, les génère en lot, puis vous téléchargez chaque chapitre ou un seul WAV fusionné.
-- **Clonage et création de voix.** Clonez une voix à partir de quelques secondes d'audio (Chatterbox, F5-TTS, Fish-Speech, Qwen3, Voxtral), ou décrivez une voix avec des mots et laissez Qwen3 Voice Design la créer.
-- **Du matériel modeste suffit.** La variable `ENABLED_ENGINES` ne charge que ce que votre machine peut tenir. Qwen3 tourne sur un portable avec une RTX 2060 de 6 Go.
+- **Clonage et création de voix.** Clonez une voix à partir de quelques secondes d'audio (OmniVoice, Chatterbox, F5-TTS, Fish-Speech, Qwen3, Voxtral, Kitten), décrivez une voix et laissez Qwen3 Voice Design ou OmniVoice la créer, ou ajoutez un soupir ou un rire avec les balises d'émotion de Kitten.
+- **Du matériel modeste suffit.** La variable `ENABLED_ENGINES` ne charge que ce que votre machine peut tenir. Un portable avec une RTX 2060 de 6 Go fait tourner cinq moteurs : Qwen3 et OmniVoice se relaient sur la carte graphique, Kokoro, Pocket TTS et Kitten utilisent le processeur.
 - **Une simple page web.** L'interface tient dans un seul fichier HTML (JavaScript sans framework, sans compilation), et le serveur dans un seul fichier FastAPI avec une API HTTP documentée.
 
 ## Les moteurs
@@ -41,6 +41,9 @@ Il est pensé d'abord pour le français, parce que les bonnes voix françaises s
 | **[Fish-Speech 1.5](https://github.com/fishaudio/fish-speech)** | Clonage multilingue | ✅ | CC-BY-NC-SA-4.0 | ❌ |
 | **[Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base)** 0.6B / 1.7B | Trois modes (clonage, voix intégrées, **Voice Design** à partir d'une description), diffusion en continu avec CUDA graphs | ✅ | Apache-2.0 | ✅ |
 | **[Voxtral 4B](https://huggingface.co/mistralai/Voxtral-4B-TTS-2603)** (Mistral AI) | Clonage pensé pour le français. Dans l'évaluation humaine publiée par Mistral, les auditeurs l'ont préféré à ElevenLabs Flash v2.5 dans [68,4 % des comparaisons en clonage](https://mistral.ai/fr/news/voxtral-tts) | ✅ | CC-BY-NC-4.0 | ❌ |
+| **[Kitten TTS 2](https://huggingface.co/KittenML/kitten-tts-2)** (KittenML) | 47 voix et balises d'émotion (`[sad]`, `<sigh>`, `<laugh>`, `(((insistance)))`) ; le français passe par une voix intégrée ou le clonage. Tourne sur CPU, mais lentement (environ 0,1 fois le temps réel sur un portable 6 cœurs) | ✅ | [Stellon Labs Community License](https://huggingface.co/KittenML/kitten-tts-2/blob/main/LICENSE.md) | ⚠️ sous 1 M$ de chiffre d'affaires, après inscription |
+| **[OmniVoice](https://huggingface.co/k2-fsa/OmniVoice)** (k2-fsa) | Meilleur score en français sur l'Open TTS Leaderboard de Hugging Face (4,7 % de mots erronés, octobre 2026), n°2 en clonage anglais ; clonage et création de voix (genre, âge, hauteur, accent). Environ 2 Go de carte graphique | ✅ | CC-BY-NC | ❌ |
+| **[Pocket TTS](https://github.com/kyutai-labs/pocket-tts)** (Kyutai) | Rapide sur processeur : 2,3 fois le temps réel en français sur un portable 6 cœurs, un seul thread. 7 langues, 27 voix | ✅ (poids à accès restreint) | CC-BY-4.0 | ✅ |
 
 Le code de Boovore est sous licence MIT. Les **poids** de chaque modèle gardent leur propre licence (colonne ci-dessus) : vérifiez-la avant de publier ou de vendre un enregistrement.
 
@@ -61,13 +64,17 @@ docker run -p 7860:7860 -e ENABLED_ENGINES=kokoro,f5 boovore
 
 La première requête à chaque moteur télécharge son modèle. Kokoro est rapide sur CPU. F5-TTS fonctionne mais y est lent : environ 3 minutes pour une phrase courte sur le processeur 6 cœurs d'un portable.
 
-### 3. Serveur GPU (les six moteurs)
+### 3. Serveur GPU (tous les moteurs)
 
-Testé sur une RTX 3090 (24 Go) louée sur Vast.ai, avec Python 3.12 et CUDA 12.8. Les commandes d'installation sont dans la [version anglaise](https://github.com/Foradc/Boovore-tts#3-gpu-server-all-six-engines).
+Testé sur une RTX 3090 (24 Go) louée sur Vast.ai, avec Python 3.12 et CUDA 12.8. Les commandes d'installation sont dans la [version anglaise](https://github.com/Foradc/Boovore-tts#3-gpu-server-all-engines).
 
-### 4. Portable Windows avec 6 Go de VRAM (Qwen3 seul)
+### 4. Portable Windows avec 6 Go de VRAM (cinq moteurs)
 
-Créez un `venv\` avec PyTorch (CUDA) et `faster-qwen3-tts`, puis double-cliquez sur **`start_qwen3_local.bat`**. Le navigateur s'ouvre sur http://localhost:7860 dès que le modèle est chargé. Testé avec Python 3.12, torch 2.7.1+cu118 et faster-qwen3-tts 0.2.4 sur un portable équipé d'une RTX 2060.
+Créez un `venv\` avec PyTorch (CUDA), `faster-qwen3-tts`, `kokoro` et `pocket-tts`, puis double-cliquez sur **`start_qwen3_local.bat`**. Le navigateur s'ouvre sur http://localhost:7860 dès que le modèle est chargé. Testé avec Python 3.12, torch 2.7.1+cu118 et faster-qwen3-tts 0.2.4 sur un portable équipé d'une RTX 2060.
+
+Pour ajouter Kitten TTS 2, lancez une fois **`setup_kitten.bat`**. Il crée un environnement séparé dans `%LOCALAPPDATA%\boovore\kitten-env` (hors du dossier du projet, pour ne pas synchroniser 1,5 Go). Ensuite, `start_qwen3_local.bat` démarre aussi Kitten sur le processeur et laisse la carte graphique à Qwen3. Kitten s'ouvre dans sa propre fenêtre réduite : fermez-la aussi quand vous arrêtez Boovore.
+
+Pour ajouter OmniVoice, lancez une fois **`setup_omnivoice.bat`** (ou, s'il est déjà installé ailleurs, mettez `set OMNIVOICE_ENV=<ce venv>` dans un fichier `local_env.bat` à côté des lanceurs). Qwen3 et OmniVoice se relaient sur la carte graphique : quand OmniVoice manque de place, Boovore décharge Qwen3 ; quand vous cliquez sur **Load** pour Qwen3, OmniVoice rend la carte. Ils ne tournent jamais ensemble sur la carte.
 
 Mesure sur ce portable : le français sort mot pour mot (vérifié par reconnaissance vocale), mais à seulement 0,1 à 0,5 fois le temps réel, parce que la carte ralentit quand elle chauffe. Pour un livre entier, prenez une carte de bureau ou une carte louée.
 
@@ -77,8 +84,8 @@ Mesure sur ce portable : le français sort mot pour mot (vérifié par reconnais
 |---|---|---|
 | `kokoro,f5` | CPU (par exemple le Space gratuit) | Kokoro, F5-TTS |
 | `kokoro,f5,chatterbox` | GPU d'environ 6 Go (par exemple T4) | + Chatterbox |
-| `qwen3` | Portable avec 6 Go de VRAM | Qwen3-TTS |
-| `all` (par défaut) | GPU de 24 Go (RTX 3090, A10G, A100) | Tous (Voxtral demande aussi son propre serveur) |
+| `qwen3,omnivoice,kokoro,pocket,kitten` | Portable avec 6 Go de VRAM | Qwen3 et OmniVoice se relaient sur la carte graphique ; Kokoro, Pocket et Kitten sur le processeur |
+| `all` (par défaut) | GPU de 24 Go (RTX 3090, A10G, A100) | Tous (Voxtral, Kitten et OmniVoice demandent aussi leur propre serveur) |
 
 ## API HTTP
 
@@ -91,9 +98,15 @@ curl -X POST http://localhost:7860/generate/kokoro_fr \
 
 # Qwen3 Voice Design : on décrit la voix au lieu de la cloner
 curl -X POST http://localhost:7860/load -F "model_id=Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+# /generate (Qwen3) renvoie du JSON avec le WAV en base64
 curl -X POST http://localhost:7860/generate -F "mode=voice_design" -F "language=French" \
      -F "instruct=A calm, deep male narrator, warm and slow." \
-     -F "text=La nuit tombait lentement sur la plaine." -o narrateur.wav
+     -F "text=La nuit tombait lentement sur la plaine." \
+  | python -c "import sys, json, base64; open('narrateur.wav', 'wb').write(base64.b64decode(json.load(sys.stdin)['audio_b64']))"
+
+# Pocket TTS renvoie directement un WAV
+curl -X POST http://localhost:7860/generate/pocket -F "language=french" -F "voice=estelle" \
+     -F "text=Bonjour, je suis Boovore." -o estelle.wav
 ```
 
 La liste complète des points d'entrée est dans la [version anglaise](https://github.com/Foradc/Boovore-tts#http-api).
@@ -110,11 +123,11 @@ Pour un changement important, ouvrez d'abord un ticket pour qu'on se mette d'acc
 
 ## Remerciements
 
-Boovore est parti d'un fork de la démo web de **[faster-qwen3-tts](https://github.com/andimarafioti/faster-qwen3-tts)** d'Andres Marafioti, dont le moteur Qwen3 à CUDA graphs fait tourner le mode en continu. Les autres moteurs viennent de [Resemble AI](https://github.com/resemble-ai/chatterbox), [SWivid](https://github.com/SWivid/F5-TTS) et [RASPIAUDIO](https://huggingface.co/RASPIAUDIO/F5-French-MixedSpeakers-reduced), [fishaudio](https://github.com/fishaudio/fish-speech), [hexgrad](https://github.com/hexgrad/kokoro), l'[équipe Qwen](https://huggingface.co/Qwen) et [Mistral AI](https://mistral.ai/fr/news/voxtral-tts). Le prétraitement de la prosodie française s'inspire de [arXiv:2508.17494](https://arxiv.org/abs/2508.17494).
+Boovore est parti d'un fork de la démo web de **[faster-qwen3-tts](https://github.com/andimarafioti/faster-qwen3-tts)** d'Andres Marafioti, dont le moteur Qwen3 à CUDA graphs fait tourner le mode en continu. Les autres moteurs viennent de [Resemble AI](https://github.com/resemble-ai/chatterbox), [SWivid](https://github.com/SWivid/F5-TTS) et [RASPIAUDIO](https://huggingface.co/RASPIAUDIO/F5-French-MixedSpeakers-reduced), [fishaudio](https://github.com/fishaudio/fish-speech), [hexgrad](https://github.com/hexgrad/kokoro), l'[équipe Qwen](https://huggingface.co/Qwen), [Mistral AI](https://mistral.ai/fr/news/voxtral-tts) et [KittenML](https://github.com/KittenML/KittenTTS), [k2-fsa](https://github.com/k2-fsa/OmniVoice) et [Kyutai](https://github.com/kyutai-labs/pocket-tts). Kitten TTS 2 est **Powered by Stellon Labs**. Le prétraitement de la prosodie française s'inspire de [arXiv:2508.17494](https://arxiv.org/abs/2508.17494).
 
 ## Licence
 
-Le code est publié sous [licence MIT](LICENSE). Les poids des modèles ont leurs propres licences : voir le [tableau des moteurs](#les-moteurs).
+Le code est publié sous [licence MIT](LICENSE). Les poids des modèles ont leurs propres licences : voir le [tableau des moteurs](#les-moteurs) et le fichier [NOTICE](NOTICE).
 
 ---
 

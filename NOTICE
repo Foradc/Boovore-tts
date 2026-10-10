@@ -1,0 +1,20 @@
+Boovore — third-party model notices
+
+Boovore's code is MIT-licensed (see LICENSE). It downloads and runs model weights that
+keep their own licenses; the engines table in the README lists them.
+
+Kitten TTS 2 (KittenML/kitten-tts-2), used by kitten_server.py:
+  This Stellon Labs Model is licensed under the Stellon Labs Community License,
+  Copyright © Stellon Labs Inc. All Rights Reserved.
+  Powered by Stellon Labs.
+  License: https://huggingface.co/KittenML/kitten-tts-2/blob/main/LICENSE.md
+  Boovore does not modify or redistribute these weights; they are downloaded from
+  Hugging Face on first use.
+
+OmniVoice (k2-fsa/OmniVoice), used by omnivoice_server.py:
+  Code Apache-2.0; pre-trained model CC-BY-NC (training data includes Emilia). No commercial use.
+  https://huggingface.co/k2-fsa/OmniVoice
+
+Pocket TTS (kyutai/pocket-tts), used in server.py:
+  Model weights by Kyutai, licensed under CC-BY-4.0: https://huggingface.co/kyutai/pocket-tts
+  Built-in voices: see https://huggingface.co/kyutai/tts-voices for each voice's license.

@@ -7,14 +7,14 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: Six open-source TTS engines, voice cloning, audiobooks
+short_description: Nine open-source TTS engines, voice cloning, audiobooks
 ---
 
 <!-- This file is the Hugging Face Space card. GitHub shows .github/README.md instead. -->
 
 # 🎙 Boovore — Multi-Engine TTS Studio
 
-**Boovore** is a self-hosted text-to-speech studio. It puts six open-source TTS engines (Kokoro, Chatterbox, F5-TTS, Fish-Speech, Qwen3-TTS and Voxtral) behind one web page, so you can compare voices, clone a voice from a short clip, and turn a `.txt`, `.pdf` or `.epub` into a chaptered audiobook. French-first.
+**Boovore** is a self-hosted text-to-speech studio. It puts nine open-source TTS engines (Kokoro, Chatterbox, F5-TTS, Fish-Speech, Qwen3-TTS, Voxtral, Kitten TTS 2, OmniVoice and Pocket TTS) behind one web page, so you can compare voices, clone a voice from a short clip, and turn a `.txt`, `.pdf` or `.epub` into a chaptered audiobook. French-first.
 
 ![Boovore UI](screenshot.png)
 
