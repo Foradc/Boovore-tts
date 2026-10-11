@@ -177,13 +177,24 @@ _POCKET_THREADS = int(os.environ.get("POCKET_THREADS", "0"))
 _pocket_voice_list: list[str] | None = None
 
 
+def _pocket_import(module: str):
+    """Import a pocket_tts module without its side effect: the package calls
+    torch.set_num_threads(1) on first import, for the whole process."""
+    import importlib
+    threads = torch.get_num_threads()
+    try:
+        return importlib.import_module(module)
+    finally:
+        torch.set_num_threads(threads)
+
+
 def _pocket_voices() -> list[str]:
     """Built-in voice names; imported once (slow the first time), so call it off the event loop."""
     global _pocket_voice_list
     if _pocket_voice_list is None:
         try:
-            from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
-            _pocket_voice_list = sorted(_ORIGINS_OF_PREDEFINED_VOICES)
+            utils = _pocket_import("pocket_tts.utils.utils")
+            _pocket_voice_list = sorted(utils._ORIGINS_OF_PREDEFINED_VOICES)
         except ImportError:
             _pocket_voice_list = []
     return _pocket_voice_list
@@ -192,9 +203,7 @@ def _pocket_voices() -> list[str]:
 def _get_pocket(language: str):
     """Caller holds _pocket_lock."""
     if language not in _pocket_models:
-        threads = torch.get_num_threads()
-        from pocket_tts import TTSModel
-        torch.set_num_threads(threads)
+        TTSModel = _pocket_import("pocket_tts").TTSModel
         print(f"Loading Pocket TTS ({language})…")
         _pocket_models[language] = TTSModel.load_model(language=language)
     return _pocket_models[language]
@@ -1407,8 +1416,8 @@ async def generate_pocket(
         ref_path = _get_cached_ref_path(ref_bytes)
         key = (language, hashlib.sha1(ref_bytes).hexdigest())
     else:
-        from pocket_tts.default_parameters import DEFAULT_VOICE_FOR_LANGUAGE, DEFAULT_VOICE_FALLBACK
-        voice = voice or DEFAULT_VOICE_FOR_LANGUAGE.get(language, DEFAULT_VOICE_FALLBACK)
+        defaults = await asyncio.to_thread(_pocket_import, "pocket_tts.default_parameters")
+        voice = voice or defaults.DEFAULT_VOICE_FOR_LANGUAGE.get(language, defaults.DEFAULT_VOICE_FALLBACK)
         if voice not in await asyncio.to_thread(_pocket_voices):
             raise HTTPException(status_code=400, detail=f"Unknown Pocket TTS voice: {voice}")
         key = (language, voice)
@@ -1463,6 +1472,9 @@ def main():
 
     if not args.no_preload:
         global _active_model_name, _parakeet
+        # An OmniVoice server left running from an earlier session may still hold the GPU:
+        # both models on a 6 GB card thrash it (100% load, nothing generated)
+        asyncio.run(_unload_gpu_sidecars())
         # No local reference: main() lives as long as uvicorn.run, and a local would keep an
         # evicted startup model (and its VRAM) alive after /load replaces it
         _model_cache[args.model] = _load_qwen3(args.model)

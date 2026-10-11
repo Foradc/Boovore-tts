@@ -1702,6 +1702,12 @@ select option, select optgroup {
         <select id="bookOmnivoiceAccent" style="font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px" title="Accents pour l'anglais"><option value="">Accent (anglais) : aucun</option><option value="American Accent">Américain</option><option value="British Accent">Britannique</option><option value="Australian Accent">Australien</option><option value="Canadian Accent">Canadien</option><option value="Indian Accent">Indien</option></select>
         <label style="font-size:11px;color:var(--dim);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="bookOmnivoiceWhisper" style="accent-color:var(--accent)"> Chuchoté</label>
         </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="ch-dl" id="bookOmnivoiceTryBtn" onclick="tryOmnivoiceBookVoice()" title="Crée la voix du livre à partir de la description, pour l'écouter avant de lancer">🎧 Essayer cette voix</button>
+          <audio id="bookOmnivoiceAnchorAudio" controls style="height:28px;display:none"></audio>
+          <button class="ch-dl" id="bookOmnivoiceNewBtn" onclick="resetOmnivoiceAnchor()" style="display:none" title="Oublie la voix figée ; la prochaine essai ou génération en crée une autre">Nouvelle voix</button>
+          <span id="bookOmnivoiceAnchorInfo" style="font-size:10px;color:var(--dimmer)">Sans extrait, Boovore crée une voix au début du livre puis la clone pour chaque chapitre : elle ne change plus.</span>
+        </div>
       </div>
       <div class="bvs-panel" id="bvs-pocket" style="display:none;flex-wrap:wrap;gap:6px">
         <span style="font-size:11px;color:var(--dim)">Langue :</span>
@@ -1918,6 +1924,7 @@ let bookCbRefFile = null;
 let bookF5RefFile = null;
 let bookKittenRefFile = null;
 let bookOmnivoiceRefFile = null;
+let bookOmnivoiceAnchor = null; // { blob, text, key }: the book's voice, cloned for every chunk
 let bookQwenRefFile = null;
 let bookFishRefFile = null;
 let bookFishRollingRef = null;  // rolling reference: tail of last generated fish chunk
@@ -2749,6 +2756,67 @@ async function generateOmnivoice() {
   await runStudioEngine('/generate/omnivoice', fd, 'OmniVoice');
   // Qwen3 may have been unloaded to make room on the GPU
   fetchStatus(); loadOmnivoiceStatus();
+}
+
+// Reference sentence the book's voice is created with (~8 s), then cloned for every chunk
+const OMNI_ANCHOR_TEXT = {
+  French: "La nuit tombait lentement sur la plaine silencieuse. Au loin, les lumières d'un village clignotaient dans l'obscurité.",
+  English: "The night was falling slowly over the silent plain. In the distance, the lights of a village were flickering in the dark.",
+  Spanish: "La noche caía lentamente sobre la llanura silenciosa. A lo lejos, las luces de un pueblo parpadeaban en la oscuridad.",
+  German: "Die Nacht senkte sich langsam über die stille Ebene. In der Ferne flackerten die Lichter eines Dorfes in der Dunkelheit.",
+  Italian: "La notte scendeva lentamente sulla pianura silenziosa. In lontananza, le luci di un villaggio tremolavano nell'oscurità.",
+  Portuguese: "A noite caía lentamente sobre a planície silenciosa. Ao longe, as luzes de uma aldeia piscavam na escuridão.",
+};
+
+// Same description + same language + same seed setting = same book voice, also after "Reprendre"
+function omnivoiceAnchorKey() {
+  return [$('bookOmnivoiceLang').value, omnivoiceInstruct('bookOmnivoice'), $('bookSeedIn')?.value || 'auto'].join('|');
+}
+
+async function ensureOmnivoiceAnchor(seed) {
+  const key = omnivoiceAnchorKey();
+  if (bookOmnivoiceAnchor && bookOmnivoiceAnchor.key === key) return bookOmnivoiceAnchor;
+  const lang = OMNI_ANCHOR_TEXT[$('bookOmnivoiceLang').value] ? $('bookOmnivoiceLang').value : 'French';
+  const fd = new FormData();
+  fd.append('text', OMNI_ANCHOR_TEXT[lang]);
+  fd.append('language', lang);
+  fd.append('instruct', omnivoiceInstruct('bookOmnivoice'));
+  if (seed !== null && seed !== undefined) fd.append('seed', seed);
+  const res = await fetch('/generate/omnivoice', { method: 'POST', body: fd });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Erreur OmniVoice'); }
+  bookOmnivoiceAnchor = { blob: new Blob([await res.arrayBuffer()], { type: 'audio/wav' }), text: OMNI_ANCHOR_TEXT[lang], key };
+  showOmnivoiceAnchor();
+  return bookOmnivoiceAnchor;
+}
+
+function showOmnivoiceAnchor() {
+  const audio = $('bookOmnivoiceAnchorAudio');
+  if (audio.src) URL.revokeObjectURL(audio.src);
+  audio.src = URL.createObjectURL(bookOmnivoiceAnchor.blob);
+  audio.style.display = '';
+  $('bookOmnivoiceNewBtn').style.display = '';
+  $('bookOmnivoiceAnchorInfo').textContent = 'Voix figée pour ce livre : tous les chapitres la reprendront.';
+}
+
+function resetOmnivoiceAnchor() {
+  bookOmnivoiceAnchor = null;
+  const audio = $('bookOmnivoiceAnchorAudio');
+  audio.pause(); audio.style.display = 'none';
+  $('bookOmnivoiceNewBtn').style.display = 'none';
+  $('bookOmnivoiceAnchorInfo').textContent = 'Voix oubliée : « Essayer cette voix » ou la génération du livre en créera une nouvelle.';
+}
+
+async function tryOmnivoiceBookVoice() {
+  const btn = $('bookOmnivoiceTryBtn');
+  btn.disabled = true; btn.textContent = '⏳ Création de la voix…';
+  try {
+    const typed = parseInt($('bookSeedIn')?.value);
+    // A new random voice each try while no seed is typed: forget the previous one first
+    if (isNaN(typed)) bookOmnivoiceAnchor = null;
+    await ensureOmnivoiceAnchor(isNaN(typed) ? Math.floor(Math.random() * 2147483647) : typed);
+    $('bookOmnivoiceAnchorAudio').play().catch(() => {});
+  } catch (e) { showMsg('err', e.message); }
+  btn.disabled = false; btn.textContent = '🎧 Essayer cette voix';
 }
 
 // ── Pocket TTS ───────────────────────────────────────────────────────────────
@@ -4439,7 +4507,11 @@ async function generateChunk(rawText) {
       fd.append('ref_wav', bookOmnivoiceRefFile);
       fd.append('ref_text', $('bookOmnivoiceRefText').value.trim());
     } else {
-      fd.append('instruct', omnivoiceInstruct('bookOmnivoice'));
+      // A designed voice is re-invented at each call (it depends on the text too): clone the
+      // book's anchor voice instead, so every chapter sounds like the same narrator
+      const anchor = await ensureOmnivoiceAnchor(bookSeed);
+      fd.append('ref_wav', anchor.blob, 'book-voice.wav');
+      fd.append('ref_text', anchor.text);
     }
     if (bookSeed !== null) fd.append('seed', bookSeed);
     const res = await fetch('/generate/omnivoice', { method: 'POST', body: fd });
