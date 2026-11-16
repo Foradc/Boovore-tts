@@ -789,6 +789,7 @@ async def generate_non_streaming(
     ref_preset: str = Form(""),
     ref_audio: UploadFile = File(None),
     seed: Optional[int] = Form(None),
+    max_new_tokens: int = Form(1800),
 ):
     if not _engine_enabled("qwen3") or FasterQwen3TTS is None:
         raise HTTPException(status_code=503, detail="Qwen3 engine not available. Install faster-qwen3-tts and use a GPU server.")
@@ -796,6 +797,8 @@ async def generate_non_streaming(
         raise HTTPException(status_code=400, detail="Modèle non chargé.")
     if len(text) > MAX_TEXT_CHARS:
         raise HTTPException(status_code=400, detail=f"Texte trop long ({len(text)} chars).")
+    # plafond de jetons (12 par seconde d'audio) : coupe un emballement sur les phrases très courtes
+    max_new_tokens = max(16, min(1800, max_new_tokens))
 
     tmp_path = None
     tmp_is_cached = False
@@ -837,19 +840,19 @@ async def generate_non_streaming(
                 audio_list, sr = model.generate_voice_clone(
                     text=text, language=language, ref_audio=tmp_path, ref_text=ref_text,
                     xvec_only=xvec_only, temperature=temperature, top_k=top_k,
-                    repetition_penalty=repetition_penalty, max_new_tokens=1800,
+                    repetition_penalty=repetition_penalty, max_new_tokens=max_new_tokens,
                 )
             elif mode == "custom":
                 if not speaker:
                     raise ValueError("Speaker ID required")
                 audio_list, sr = model.generate_custom_voice(
                     text=text, speaker=speaker, language=language, instruct=instruct,
-                    temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
+                    temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=max_new_tokens,
                 )
             else:
                 audio_list, sr = model.generate_voice_design(
                     text=text, instruct=instruct, language=language,
-                    temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=1800,
+                    temperature=temperature, top_k=top_k, repetition_penalty=repetition_penalty, max_new_tokens=max_new_tokens,
                 )
         finally:
             # Restore cuDNN settings after generation
